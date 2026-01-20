@@ -1,0 +1,3355 @@
+import pygame
+import random
+import math
+import time
+from collections import deque
+
+# Inicializar Pygame
+pygame.init()
+pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+
+# Configuración de pantalla
+SCREEN_WIDTH = 900
+SCREEN_HEIGHT = 650
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Duck Hunt - Ultimate Edition")
+
+# Colores mejorados (del primer código)
+SKY_BLUE = (135, 206, 250)
+SKY_DARK = (70, 130, 180)
+SKY_SUNSET = (255, 150, 100)
+SKY_NIGHT = (15, 20, 50)
+SKY_HELL = (80, 20, 10)
+GRASS_GREEN = (34, 139, 34)
+GRASS_LIGHT = (50, 205, 50)
+GRASS_DARK = (0, 100, 0)
+BUSH_GREEN = (0, 128, 0)
+BUSH_DARK = (0, 80, 0)
+TREE_BROWN = (139, 69, 19)
+TREE_GREEN = (34, 139, 34)
+TREE_DARK = (20, 100, 20)
+CLOUD_WHITE = (255, 255, 255)
+CLOUD_GRAY = (220, 220, 220)
+SUN_YELLOW = (255, 223, 0)
+SUN_ORANGE = (255, 165, 0)
+MOON_WHITE = (240, 240, 220)
+MOUNTAIN_FAR = (120, 150, 120)
+MOUNTAIN_NEAR = (80, 120, 80)
+DUCK_YELLOW = (255, 215, 0)
+DUCK_ORANGE = (255, 140, 0)
+DUCK_BROWN = (139, 90, 43)
+DUCK_WHITE = (255, 255, 255)
+DOG_BROWN = (160, 82, 45)
+DOG_LIGHT = (210, 180, 140)
+DOG_DARK = (101, 67, 33)
+DOG_NOSE = (50, 30, 20)
+DOG_GOLD = (255, 215, 0)
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 50, 50)
+GREEN = (50, 255, 50)
+GOLD = (255, 215, 0)
+WATER_BLUE = (64, 164, 223)
+WATER_LIGHT = (100, 180, 230)
+PURPLE = (150, 100, 200)
+HELL_RED = (150, 30, 20)
+LAVA_ORANGE = (255, 100, 20)
+BLOOD_RED = (180, 30, 30)
+CRIMSON = (220, 20, 60)
+DARK_PURPLE = (75, 0, 130)
+NEON_BLUE = (0, 191, 255)
+NEON_GREEN = (57, 255, 20)
+
+# Reloj para FPS
+clock = pygame.time.Clock()
+FPS = 60
+
+# Fuentes mejoradas
+font_title = pygame.font.Font(None, 90)
+font_large = pygame.font.Font(None, 60)
+font_medium = pygame.font.Font(None, 40)
+font_small = pygame.font.Font(None, 28)
+font_tiny = pygame.font.Font(None, 22)
+
+# Dimensiones de elementos
+DUCK_WIDTH = 55
+DUCK_HEIGHT = 45
+DOG_WIDTH = 85
+DOG_HEIGHT = 75
+HUD_HEIGHT = 70
+GRASS_HEIGHT = 160
+
+MIN_SPAWN_X = 20
+MAX_SPAWN_X = SCREEN_WIDTH - DUCK_WIDTH - 20
+MIN_SPAWN_Y = HUD_HEIGHT + 30
+MAX_SPAWN_Y = SCREEN_HEIGHT - GRASS_HEIGHT - DUCK_HEIGHT - 30
+
+CURSOR_SPEED = 10
+
+# ============ SISTEMA DE SONIDO COMPLETO ============
+class SoundSystem:
+    def __init__(self):
+        self.sounds = {}
+        self.current_ambient = None
+        self.volume = 0.4
+        self.generate_all_sounds()
+    
+    def generate_all_sounds(self):
+        try:
+            sample_rate = 22050
+            
+            # ===== SONIDO MENU =====
+            duration = 4.0
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                val = int(2000 * math.sin(2 * math.pi * 220 * t) * (0.3 + 0.2 * math.sin(2 * math.pi * 0.5 * t)))
+                val += int(1500 * math.sin(2 * math.pi * 330 * t) * (0.2 + 0.1 * math.sin(2 * math.pi * 0.3 * t)))
+                val += int(1000 * math.sin(2 * math.pi * 440 * t) * 0.1)
+                fade = min(1.0, i / (sample_rate * 0.5), (samples - i) / (sample_rate * 0.5))
+                arr.append(max(-32767, min(32767, int(val * fade * 0.12))))
+            self.sounds['menu'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO TENSION =====
+            duration = 3.0
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                val = int(3500 * math.sin(2 * math.pi * 55 * t))
+                val += int(2500 * math.sin(2 * math.pi * 110 * t) * (0.5 + 0.5 * math.sin(2 * math.pi * 1.5 * t)))
+                val += int(1500 * math.sin(2 * math.pi * 165 * t) * 0.3)
+                val += random.randint(-300, 300)
+                fade = min(1.0, i / (sample_rate * 0.2), (samples - i) / (sample_rate * 0.2))
+                arr.append(max(-32767, min(32767, int(val * fade * 0.1))))
+            self.sounds['tension'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO DISPARO =====
+            duration = 0.15
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                decay = math.exp(-t * 30)
+                noise = random.randint(-8000, 8000) * decay
+                bang = int(12000 * math.sin(2 * math.pi * 150 * t) * decay)
+                arr.append(max(-32767, min(32767, int((noise + bang) * 0.5))))
+            self.sounds['shoot'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO HIT/IMPACTO =====
+            duration = 0.1
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                decay = math.exp(-t * 40)
+                val = int(10000 * math.sin(2 * math.pi * 400 * t) * decay)
+                val += int(5000 * math.sin(2 * math.pi * 800 * t) * decay * 0.5)
+                arr.append(max(-32767, min(32767, val)))
+            self.sounds['hit'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO RAYO/THUNDER =====
+            duration = 0.8
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                if t < 0.1:
+                    val = random.randint(-15000, 15000) * (1 - t * 10)
+                else:
+                    decay = math.exp(-(t - 0.1) * 5)
+                    val = int(8000 * math.sin(2 * math.pi * 80 * t) * decay)
+                    val += random.randint(-2000, 2000) * decay
+                arr.append(max(-32767, min(32767, int(val * 0.6))))
+            self.sounds['thunder'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO VICTORIA =====
+            duration = 0.8
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                val = int(5000 * math.sin(2 * math.pi * 523 * t))
+                val += int(4000 * math.sin(2 * math.pi * 659 * t))
+                val += int(3000 * math.sin(2 * math.pi * 784 * t))
+                fade = min(1.0, (duration - t) / 0.3)
+                arr.append(max(-32767, min(32767, int(val * fade * 0.4))))
+            self.sounds['victory'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO DESBLOQUEO =====
+            duration = 1.2
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                freq = 300 + t * 400
+                val = int(6000 * math.sin(2 * math.pi * freq * t))
+                val += int(4000 * math.sin(2 * math.pi * freq * 1.5 * t))
+                fade = min(1.0, t / 0.1, (duration - t) / 0.2)
+                arr.append(max(-32767, min(32767, int(val * fade * 0.35))))
+            self.sounds['unlock'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO HISTORIA TRISTE =====
+            duration = 3.0
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                val = int(2000 * math.sin(2 * math.pi * 220 * t) * (0.4 + 0.3 * math.sin(2 * math.pi * 0.3 * t)))
+                val += int(1500 * math.sin(2 * math.pi * 165 * t) * 0.3)
+                fade = min(1.0, t / 0.5, (duration - t) / 0.5)
+                arr.append(max(-32767, min(32767, int(val * fade * 0.15))))
+            self.sounds['sad'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO BOSS =====
+            duration = 1.5
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                val = int(4000 * math.sin(2 * math.pi * 90 * t) * (0.5 + 0.5 * math.sin(2 * math.pi * 1.0 * t)))
+                val += int(3000 * math.sin(2 * math.pi * 180 * t) * 0.3)
+                val += random.randint(-500, 500)
+                fade = min(1.0, t / 0.2, (duration - t) / 0.3)
+                arr.append(max(-32767, min(32767, int(val * fade * 0.25))))
+            self.sounds['boss'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # ===== SONIDO PERRO LADRAR =====
+            duration = 0.25
+            samples = int(sample_rate * duration)
+            arr = []
+            for i in range(samples):
+                t = i / sample_rate
+                freq = 300 + 200 * math.sin(t * 25)
+                decay = math.exp(-t * 8)
+                val = int(8000 * math.sin(2 * math.pi * freq * t) * decay)
+                arr.append(max(-32767, min(32767, val)))
+            self.sounds['bark'] = pygame.mixer.Sound(buffer=bytes(b''.join(v.to_bytes(2, 'little', signed=True) for v in arr)))
+            
+            # Ajustar volúmenes
+            self.sounds['menu'].set_volume(self.volume * 0.3)
+            self.sounds['tension'].set_volume(self.volume * 0.4)
+            self.sounds['shoot'].set_volume(self.volume * 0.6)
+            self.sounds['hit'].set_volume(self.volume * 0.5)
+            self.sounds['thunder'].set_volume(self.volume * 0.7)
+            self.sounds['victory'].set_volume(self.volume * 0.5)
+            self.sounds['unlock'].set_volume(self.volume * 0.6)
+            self.sounds['sad'].set_volume(self.volume * 0.35)
+            self.sounds['boss'].set_volume(self.volume * 0.45)
+            self.sounds['bark'].set_volume(self.volume * 0.5)
+            
+        except Exception as e:
+            print(f"Error generando sonidos: {e}")
+    
+    def play(self, sound_name):
+        if sound_name in self.sounds:
+            self.sounds[sound_name].play()
+    
+    def play_ambient(self, ambient_type):
+        self.stop_ambient()
+        if ambient_type in self.sounds:
+            self.sounds[ambient_type].play(loops=-1)
+            self.current_ambient = ambient_type
+    
+    def stop_ambient(self):
+        if self.current_ambient and self.current_ambient in self.sounds:
+            self.sounds[self.current_ambient].stop()
+        self.current_ambient = None
+
+class AmbientSound:
+    def __init__(self):
+        self.sound_system = SoundSystem()
+    
+    def play_menu(self):
+        self.sound_system.play_ambient('menu')
+    
+    def play_tension(self):
+        self.sound_system.play_ambient('tension')
+    
+    def stop(self):
+        self.sound_system.stop_ambient()
+    
+    def play(self, name):
+        self.sound_system.play(name)
+
+# ============ CLASE CLOUD ============
+class Cloud:
+    def __init__(self, start_random=True):
+        if start_random:
+            self.x = random.randint(-50, SCREEN_WIDTH + 50)
+        else:
+            self.x = random.randint(-250, -50)
+        self.y = random.randint(HUD_HEIGHT + 10, 200)
+        self.speed = random.uniform(0.2, 0.6)
+        self.size = random.uniform(0.6, 1.4)
+        self.layer = random.randint(0, 2)
+    
+    def update(self, slow_motion=False):
+        speed_mult = 0.3 if slow_motion else 1.0
+        self.x += self.speed * speed_mult
+        if self.x > SCREEN_WIDTH + 180:
+            self.x = random.randint(-250, -100)
+            self.y = random.randint(HUD_HEIGHT + 10, 200)
+            self.size = random.uniform(0.6, 1.4)
+    
+    def draw(self, surface, time_of_day='day'):
+        if time_of_day == 'night':
+            main_color = (60, 60, 80)
+            shadow_color = (40, 40, 60)
+        elif time_of_day == 'sunset':
+            main_color = (255, 200, 180)
+            shadow_color = (200, 150, 130)
+        elif time_of_day == 'hell':
+            main_color = (80, 40, 40)
+            shadow_color = (50, 25, 25)
+        else:
+            main_color = CLOUD_WHITE
+            shadow_color = CLOUD_GRAY
+        
+        base_size = int(35 * self.size)
+        
+        # Shadow
+        pygame.draw.ellipse(surface, shadow_color, 
+                          (self.x + 4, self.y + 4, base_size * 2.2, base_size * 0.9))
+        pygame.draw.ellipse(surface, shadow_color, 
+                          (self.x + base_size * 0.5 + 4, self.y - base_size * 0.35 + 4, base_size * 1.6, base_size * 1.1))
+        
+        # Main cloud
+        pygame.draw.ellipse(surface, main_color, 
+                          (self.x, self.y, base_size * 2.2, base_size * 0.9))
+        pygame.draw.ellipse(surface, main_color, 
+                          (self.x + base_size * 0.5, self.y - base_size * 0.35, base_size * 1.6, base_size * 1.1))
+        pygame.draw.ellipse(surface, main_color, 
+                          (self.x + base_size * 1.1, self.y + base_size * 0.05, base_size * 1.4, base_size * 0.85))
+
+# ============ CLASE STAR ============
+class Star:
+    def __init__(self):
+        self.x = random.randint(0, SCREEN_WIDTH)
+        self.y = random.randint(HUD_HEIGHT, SCREEN_HEIGHT - GRASS_HEIGHT - 80)
+        self.brightness = random.uniform(0.3, 1.0)
+        self.twinkle_speed = random.uniform(0.03, 0.1)
+        self.phase = random.uniform(0, math.pi * 2)
+        self.size = random.choice([1, 1, 1, 2, 2, 3])
+    
+    def update(self):
+        self.phase += self.twinkle_speed
+    
+    def draw(self, surface):
+        brightness = int(120 + 135 * math.sin(self.phase) * self.brightness)
+        color = (brightness, brightness, min(255, brightness + 30))
+        pygame.draw.circle(surface, color, (self.x, self.y), self.size)
+        if self.size > 1 and brightness > 200:
+            pygame.draw.line(surface, (brightness, brightness, brightness), 
+                           (self.x - self.size - 1, self.y), (self.x + self.size + 1, self.y), 1)
+            pygame.draw.line(surface, (brightness, brightness, brightness), 
+                           (self.x, self.y - self.size - 1), (self.x, self.y + self.size + 1), 1)
+
+# ============ CLASE DOG ============
+class Dog:
+    def __init__(self):
+        self.x = SCREEN_WIDTH // 2 - DOG_WIDTH // 2
+        self.y = SCREEN_HEIGHT - GRASS_HEIGHT + 40
+        self.state = 'hidden'
+        self.animation_timer = 0
+        self.target_y = self.y
+        self.laugh_frame = 0
+        self.held_duck_color = 'yellow'
+        self.god_mode = False
+        self.god_timer = 0
+        self.kills = 0
+        self.bounce = 0
+        self.god_mode_used_this_round = False
+        self.smoke_particles = []
+    
+    def activate_god_mode(self):
+        if self.god_mode_used_this_round:
+            return False
+        self.god_mode = True
+        self.god_timer = 120
+        self.state = 'god_mode'
+        self.animation_timer = 120
+        self.target_y = SCREEN_HEIGHT - GRASS_HEIGHT - DOG_HEIGHT - 60
+        self.god_mode_used_this_round = True
+        return True
+    
+    def reset_round(self):
+        self.god_mode_used_this_round = False
+        self.smoke_particles = []
+    
+    def show_laugh(self):
+        if not self.god_mode:
+            self.state = 'laughing'
+            self.animation_timer = 180
+            self.target_y = SCREEN_HEIGHT - GRASS_HEIGHT - DOG_HEIGHT + 15
+    
+    def show_celebrate(self, duck_x, duck_color):
+        if not self.god_mode:
+            self.x = duck_x - DOG_WIDTH // 2
+            self.x = max(25, min(self.x, SCREEN_WIDTH - DOG_WIDTH - 25))
+            self.state = 'celebrating'
+            self.animation_timer = 140
+            self.target_y = SCREEN_HEIGHT - GRASS_HEIGHT - DOG_HEIGHT + 15
+            self.held_duck_color = duck_color
+            self.kills += 1
+    
+    def update(self, ducks=None):
+        self.bounce += 0.15
+        
+        self.smoke_particles = [p for p in self.smoke_particles if hasattr(p, 'update') and p.update()]
+        
+        if self.god_mode:
+            self.god_timer -= 1
+            
+            if self.god_timer % 5 == 0:
+                for _ in range(3):
+                    self.smoke_particles.append(Particle(
+                        self.x + random.randint(10, DOG_WIDTH - 10),
+                        self.y + random.randint(10, DOG_HEIGHT - 10),
+                        'smoke'
+                    ))
+            
+            if self.god_timer <= 0:
+                self.god_mode = False
+                self.state = 'hiding'
+            else:
+                if ducks:
+                    for duck in ducks:
+                        if duck.alive and not duck.falling:
+                            if self.x < duck.x:
+                                self.x += 3
+                            elif self.x > duck.x:
+                                self.x -= 3
+                            if abs(self.x - duck.x) < 55:
+                                duck.alive = False
+                                duck.falling = True
+                                self.kills += 1
+                                return duck.points
+                return 0
+        
+        if self.state == 'hidden':
+            self.y = SCREEN_HEIGHT - GRASS_HEIGHT + 50
+            return 0
+        
+        if self.state in ['laughing', 'celebrating']:
+            if self.y > self.target_y:
+                self.y -= 5
+            
+            self.animation_timer -= 1
+            if self.animation_timer <= 0:
+                self.state = 'hiding'
+        
+        if self.state == 'hiding':
+            self.y += 5
+            if self.y >= SCREEN_HEIGHT - GRASS_HEIGHT + 50:
+                self.state = 'hidden'
+        
+        if self.state == 'laughing':
+            self.laugh_frame = (self.laugh_frame + 1) % 30
+        
+        return 0
+    
+    def draw(self, surface):
+        if self.state == 'hidden':
+            return
+        
+        for particle in self.smoke_particles:
+            if hasattr(particle, 'draw'):
+                particle.draw(surface)
+        
+        x, y = int(self.x), int(self.y)
+        
+        main_color = DOG_GOLD if self.god_mode else DOG_BROWN
+        light_color = (255, 240, 150) if self.god_mode else DOG_LIGHT
+        dark_color = (200, 170, 50) if self.god_mode else DOG_DARK
+        
+        if self.god_mode:
+            for i in range(4):
+                alpha = 80 - i * 20
+                size = 70 + i * 18
+                aura_offset = int(math.sin(self.bounce * 2) * 3)
+                glow_surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (255, 215, 0, alpha), (size, size), size)
+                surface.blit(glow_surf, (x + DOG_WIDTH // 2 - size, y + DOG_HEIGHT // 2 - size + aura_offset))
+        
+        bounce_offset = int(math.sin(self.bounce) * 2) if self.state in ['celebrating', 'god_mode'] else 0
+        y += bounce_offset
+        
+        # Body
+        pygame.draw.ellipse(surface, main_color, (x + 12, y + 38, 60, 35))
+        
+        # Head
+        pygame.draw.ellipse(surface, main_color, (x + 18, y + 8, 52, 42))
+        
+        # Ears
+        pygame.draw.ellipse(surface, dark_color, (x + 8, y + 6, 22, 35))
+        pygame.draw.ellipse(surface, dark_color, (x + 55, y + 6, 22, 35))
+        pygame.draw.ellipse(surface, (180, 120, 80) if not self.god_mode else (255, 200, 100), (x + 12, y + 12, 14, 25))
+        pygame.draw.ellipse(surface, (180, 120, 80) if not self.god_mode else (255, 200, 100), (x + 59, y + 12, 14, 25))
+        
+        # Snout
+        pygame.draw.ellipse(surface, light_color, (x + 28, y + 30, 35, 24))
+        
+        # Nose
+        pygame.draw.ellipse(surface, DOG_NOSE, (x + 40, y + 32, 15, 12))
+        pygame.draw.ellipse(surface, (30, 20, 15), (x + 44, y + 35, 8, 6))
+        
+        if self.state == 'laughing':
+            bounce = 4 if self.laugh_frame < 15 else 0
+            pygame.draw.arc(surface, BLACK, (x + 26, y + 18 + bounce, 16, 12), 0, 3.14, 3)
+            pygame.draw.arc(surface, BLACK, (x + 48, y + 18 + bounce, 16, 12), 0, 3.14, 3)
+            pygame.draw.ellipse(surface, (60, 30, 20), (x + 38, y + 44, 20, 12))
+            pygame.draw.ellipse(surface, (255, 120, 120), (x + 40, y + 48, 16, 6))
+        elif self.god_mode:
+            pygame.draw.circle(surface, WHITE, (x + 33, y + 22), 10)
+            pygame.draw.circle(surface, WHITE, (x + 55, y + 22), 10)
+            pygame.draw.circle(surface, (255, 100, 0), (x + 33, y + 22), 6)
+            pygame.draw.circle(surface, (255, 100, 0), (x + 55, y + 22), 6)
+            pygame.draw.circle(surface, (255, 200, 0), (x + 33, y + 22), 3)
+            pygame.draw.circle(surface, (255, 200, 0), (x + 55, y + 22), 3)
+            pygame.draw.polygon(surface, GOLD, [
+                (x + 22, y + 2), (x + 28, y - 18), (x + 35, y - 6),
+                (x + 43, y - 24), (x + 52, y - 6), (x + 58, y - 18), (x + 65, y + 2)
+            ])
+            pygame.draw.polygon(surface, (255, 240, 100), [
+                (x + 26, y), (x + 30, y - 12), (x + 36, y - 4),
+                (x + 43, y - 18), (x + 50, y - 4), (x + 56, y - 12), (x + 60, y)
+            ])
+            pygame.draw.circle(surface, RED, (x + 43, y - 15), 4)
+            pygame.draw.circle(surface, (100, 150, 255), (x + 30, y - 8), 3)
+            pygame.draw.circle(surface, (100, 255, 100), (x + 56, y - 8), 3)
+        else:
+            pygame.draw.circle(surface, WHITE, (x + 33, y + 22), 9)
+            pygame.draw.circle(surface, WHITE, (x + 55, y + 22), 9)
+            pygame.draw.circle(surface, BLACK, (x + 35, y + 23), 5)
+            pygame.draw.circle(surface, BLACK, (x + 57, y + 23), 5)
+            pygame.draw.circle(surface, WHITE, (x + 36, y + 22), 2)
+            pygame.draw.circle(surface, WHITE, (x + 58, y + 22), 2)
+            
+            if self.state == 'celebrating':
+                pygame.draw.arc(surface, BLACK, (x + 36, y + 42, 22, 14), 3.14, 6.28, 3)
+        
+        # Legs
+        pygame.draw.ellipse(surface, main_color, (x + 15, y + 65, 18, 20))
+        pygame.draw.ellipse(surface, main_color, (x + 52, y + 65, 18, 20))
+        pygame.draw.ellipse(surface, light_color, (x + 18, y + 78, 12, 10))
+        pygame.draw.ellipse(surface, light_color, (x + 55, y + 78, 12, 10))
+        
+        # Duck in mouth when celebrating
+        if self.state == 'celebrating':
+            duck_colors = {
+                'yellow': DUCK_YELLOW,
+                'brown': DUCK_BROWN,
+                'white': DUCK_WHITE,
+                'green': (50, 180, 50),
+                'blue': (100, 150, 220),
+                'boss': (180, 50, 50)
+            }
+            duck_color = duck_colors.get(self.held_duck_color, DUCK_YELLOW)
+            pygame.draw.ellipse(surface, duck_color, (x + 28, y - 12, 30, 20))
+            pygame.draw.circle(surface, duck_color, (x + 55, y - 4), 10)
+            pygame.draw.polygon(surface, DUCK_ORANGE, [(x + 62, y - 4), (x + 75, y - 2), (x + 62, y)])
+
+# ============ NUEVO: SISTEMA DE SHAKER ============
+class ScreenShaker:
+    def __init__(self):
+        self.shake_intensity = 0
+        self.shake_duration = 0
+        self.offset_x = 0
+        self.offset_y = 0
+        
+    def shake(self, intensity=10, duration=15):
+        self.shake_intensity = intensity
+        self.shake_duration = duration
+        
+    def update(self):
+        if self.shake_duration > 0:
+            self.offset_x = random.randint(-self.shake_intensity, self.shake_intensity)
+            self.offset_y = random.randint(-self.shake_intensity, self.shake_intensity)
+            self.shake_duration -= 1
+        else:
+            self.offset_x = 0
+            self.offset_y = 0
+            
+    def get_offset(self):
+        return (self.offset_x, self.offset_y)
+
+# ============ SISTEMA DE DIÁLOGOS MEJORADO ============
+class DialogueSystem:
+    def __init__(self, ambient_sound):
+        self.dialogues = deque()
+        self.current_dialogue = None
+        self.dialogue_timer = 0
+        self.ambient_sound = ambient_sound
+        self.typing_index = 0
+        self.typing_speed = 2
+        
+        self.story_dialogues = [
+            {"speaker": "Narrador", "text": "En un pacífico valle, Hunter vivía feliz con sus tres cachorros...", "voice": "sad"},
+            {"speaker": "Narrador", "text": "Los días eran soleados y la comida abundaba...", "voice": "sad"},
+            {"speaker": "Hunter", "text": "Los tiempos se están poniendo difíciles...", "voice": "sad"},
+            {"speaker": "Hunter", "text": "Mis cachorros tienen hambre...", "voice": "sad"},
+            {"speaker": "Narrador", "text": "Con determinación, Hunter tomó su escopeta...", "voice": "tension"},
+            {"speaker": "Hunter", "text": "Por mi familia, cazaré hasta el amanecer...", "voice": "tension"},
+            {"speaker": "Narrador", "text": "La leyenda de Hunter creció en el valle...", "voice": "tension"},
+            {"speaker": "Narrador", "text": "Pero mayores desafíos le esperaban...", "voice": "tension"},
+            {"speaker": "???", "text": "Has encontrado el camino prohibido...", "voice": "thunder", "effect": "thunder"},
+            {"speaker": "Voz Oscura", "text": "En esta cueva moran criaturas ancestrales...", "voice": "thunder", "effect": "shake"},
+            {"speaker": "Voz Oscura", "text": "Demuestra tu valor, cazador...", "voice": "thunder", "effect": "boss_appear"},
+        ]
+        
+        self.boss_intros = [
+            {"speaker": "SOMBRA ALADA", "text": "Yo soy el guardián de las profundidades...", "color": (60, 60, 80)},
+            {"speaker": "FÉNIX OSCURO", "text": "De las cenizas renaceré una y otra vez...", "color": (200, 50, 30)},
+            {"speaker": "ESPECTRO DEL VACÍO", "text": "La oscuridad consume todo a su paso...", "color": (100, 50, 150)},
+            {"speaker": "DEMONIO CARMESÍ", "text": "La sangre de los cazadores alimenta mi fuego...", "color": (180, 20, 20)},
+            {"speaker": "TITÁN INFERNAL", "text": "YO SOY EL FINAL... EL DESTINO DE TODOS...", "color": (255, 80, 0)},
+        ]
+    
+    def add_boss_intro(self, boss_index):
+        if boss_index < len(self.boss_intros):
+            self.dialogues.append(self.boss_intros[boss_index])
+    
+    def update(self):
+        if self.current_dialogue:
+            self.dialogue_timer -= 1
+            
+            if self.typing_index < len(self.current_dialogue.get('text', '')):
+                self.typing_index += self.typing_speed
+            
+            if self.dialogue_timer <= 0:
+                self.current_dialogue = None
+                self.typing_index = 0
+        
+        if not self.current_dialogue and self.dialogues:
+            self.current_dialogue = self.dialogues.popleft()
+            self.dialogue_timer = 240
+            self.typing_index = 0
+            
+            if "voice" in self.current_dialogue:
+                self.ambient_sound.play(self.current_dialogue["voice"])
+            
+            if "effect" in self.current_dialogue:
+                if self.current_dialogue["effect"] == "thunder":
+                    self.ambient_sound.play('thunder')
+                    return "thunder"
+                elif self.current_dialogue["effect"] == "shake":
+                    return "shake"
+                elif self.current_dialogue["effect"] == "boss_appear":
+                    return "boss_appear"
+        
+        return None
+    
+    def draw(self, surface, shaker):
+        if not self.current_dialogue:
+            return
+        
+        dialogue_height = 120
+        dialogue_y = SCREEN_HEIGHT - dialogue_height - 30 + shaker.offset_y
+        
+        vignette = pygame.Surface((SCREEN_WIDTH, dialogue_height), pygame.SRCALPHA)
+        for i in range(dialogue_height):
+            alpha = int(200 * (i / dialogue_height) ** 0.5)
+            pygame.draw.line(vignette, (0, 0, 0, alpha), (0, i), (SCREEN_WIDTH, i))
+        surface.blit(vignette, (0, dialogue_y))
+        
+        for i in range(3):
+            glow_alpha = 80 - i * 25
+            pygame.draw.rect(surface, (*GOLD, glow_alpha), 
+                           (20 - i + shaker.offset_x, dialogue_y - i + shaker.offset_y, 
+                            SCREEN_WIDTH - 40 + i*2, dialogue_height + i*2), 
+                            3, border_radius=10)
+        
+        speaker_color = self.current_dialogue.get('color', GOLD)
+        speaker_text = font_medium.render(f"{self.current_dialogue['speaker']}:", True, speaker_color)
+        surface.blit(speaker_text, (40 + shaker.offset_x, dialogue_y + 15 + shaker.offset_y))
+        
+        full_text = self.current_dialogue.get('text', '')
+        display_text = full_text[:int(self.typing_index)]
+        
+        text_shadow = font_small.render(display_text, True, (0, 0, 0))
+        surface.blit(text_shadow, (42 + shaker.offset_x, dialogue_y + 62 + shaker.offset_y))
+        
+        text_main = font_small.render(display_text, True, WHITE)
+        surface.blit(text_main, (40 + shaker.offset_x, dialogue_y + 60 + shaker.offset_y))
+        
+        if int(self.typing_index) >= len(full_text):
+            if (pygame.time.get_ticks() // 500) % 2 == 0:
+                cursor_x = 40 + text_main.get_width() + 5 + shaker.offset_x
+                pygame.draw.rect(surface, WHITE, (cursor_x, dialogue_y + 65, 3, 20))
+
+# ============ CLASE PARTICLE ============
+class Particle:
+    def __init__(self, x, y, particle_type='feather', color=None, size=None):
+        self.x = x
+        self.y = y
+        self.type = particle_type
+        self.vx = random.uniform(-4, 4)
+        self.vy = random.uniform(-6, -2)
+        self.life = random.randint(50, 100)
+        self.max_life = self.life
+        self.size = size or random.randint(3, 10)
+        self.color = color
+        self.rotation = random.uniform(0, 360)
+        self.rot_speed = random.uniform(-15, 15)
+        self.gravity = 0.2
+        self.wind = random.uniform(-0.1, 0.1)
+        
+        if not color:
+            if particle_type == 'feather':
+                self.color = random.choice([DUCK_YELLOW, DUCK_ORANGE, WHITE, (200, 200, 200)])
+            elif particle_type == 'spark':
+                self.color = random.choice([GOLD, (255, 200, 100), (255, 255, 200)])
+            elif particle_type == 'blood':
+                self.color = random.choice([BLOOD_RED, CRIMSON, (150, 30, 30)])
+            elif particle_type == 'star':
+                self.color = random.choice([GOLD, WHITE, (255, 200, 100)])
+                self.vy = random.uniform(-3, 3)
+                self.vx = random.uniform(-2, 2)
+            elif particle_type == 'lightning':
+                self.color = (200, 200, 255)
+                self.life = random.randint(8, 20)
+                self.max_life = self.life
+            elif particle_type == 'ember':
+                self.color = random.choice([LAVA_ORANGE, RED, (255, 200, 50)])
+                self.vy = random.uniform(-5, -2)
+                self.life = random.randint(80, 150)
+                self.max_life = self.life
+            elif particle_type == 'smoke':
+                self.color = random.choice([(100, 100, 100), (80, 80, 80), (120, 120, 120)])
+                self.vy = random.uniform(-1.5, -0.3)
+                self.vx = random.uniform(-0.8, 0.8)
+                self.life = random.randint(100, 180)
+                self.max_life = self.life
+            elif particle_type == 'magic':
+                self.color = random.choice([NEON_BLUE, PURPLE, NEON_GREEN, (255, 100, 255)])
+                self.vy = random.uniform(-2, 2)
+                self.vx = random.uniform(-2, 2)
+                self.life = random.randint(40, 80)
+                self.max_life = self.life
+    
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        
+        if self.type not in ['star', 'ember', 'smoke', 'magic']:
+            self.vy += self.gravity
+        elif self.type == 'ember':
+            self.vy -= 0.05
+            self.vx += self.wind
+        elif self.type == 'smoke':
+            self.size += 0.15
+            self.vx += random.uniform(-0.05, 0.05)
+        
+        self.rotation += self.rot_speed
+        self.life -= 1
+        
+        return self.life > 0
+    
+    def draw(self, surface):
+        alpha = int(255 * (self.life / self.max_life))
+        current_size = self.size * (self.life / self.max_life)
+        
+        if self.type == 'feather':
+            points = []
+            for angle in [0, 120, 240]:
+                rad = math.radians(self.rotation + angle)
+                px = self.x + current_size * math.cos(rad)
+                py = self.y + current_size * 0.5 * math.sin(rad)
+                points.append((px, py))
+            
+            if len(points) >= 3:
+                pygame.draw.polygon(surface, self.color, points)
+                
+        elif self.type == 'spark':
+            trail_length = current_size * 2
+            end_x = self.x - self.vx * 2
+            end_y = self.y - self.vy * 2
+            pygame.draw.line(surface, self.color, (self.x, self.y), (end_x, end_y), max(1, int(current_size)))
+            pygame.draw.circle(surface, WHITE, (int(self.x), int(self.y)), max(1, int(current_size/2)))
+            
+        elif self.type == 'star':
+            points = []
+            for i in range(5):
+                angle = math.radians(i * 72)
+                r = current_size if i % 2 == 0 else current_size * 0.5
+                points.append((self.x + r * math.cos(angle), self.y + r * math.sin(angle)))
+            
+            if len(points) >= 3:
+                color_with_alpha = (*self.color[:3], alpha // 2)
+                pygame.draw.polygon(surface, color_with_alpha, points)
+                pygame.draw.polygon(surface, self.color, points, 2)
+                
+        elif self.type in ['ember', 'magic']:
+            for i in range(3):
+                glow_size = current_size + i * 3
+                glow_alpha = alpha // (i + 2)
+                glow_color = (*self.color[:3], glow_alpha)
+                pygame.draw.circle(surface, glow_color, (int(self.x), int(self.y)), int(glow_size))
+            
+        elif self.type == 'smoke':
+            smoke_color = (*self.color[:3], alpha // 3)
+            pygame.draw.circle(surface, smoke_color, (int(self.x), int(self.y)), int(current_size))
+            
+        else:
+            pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(current_size))
+
+# ============ CLASE FLOATING TEXT ============
+class FloatingText:
+    def __init__(self, x, y, text, color=GOLD, size='medium'):
+        self.x = x
+        self.y = y
+        self.text = text
+        self.color = color
+        self.life = 60
+        self.max_life = 60
+        self.font = font_medium if size == 'medium' else font_small
+    
+    def update(self):
+        self.y -= 1.5
+        self.life -= 1
+        return self.life > 0
+    
+    def draw(self, surface):
+        alpha = int(255 * (self.life / self.max_life))
+        text_surf = self.font.render(self.text, True, self.color)
+        text_surf.set_alpha(alpha)
+        surface.blit(text_surf, (self.x - text_surf.get_width() // 2, self.y))
+
+# ============ CLASE POWERUP ============
+class PowerUp:
+    def __init__(self):
+        self.x = random.randint(120, SCREEN_WIDTH - 120)
+        self.y = random.randint(HUD_HEIGHT + 60, SCREEN_HEIGHT - GRASS_HEIGHT - 60)
+        self.type = random.choice(['rapid_fire', 'slow_motion', 'extra_ammo', 'double_points', 'shield', 'magnet'])
+        self.timer = 360
+        self.collected = False
+        self.pulse = 0
+        self.float_offset = random.uniform(0, math.pi * 2)
+    
+    def update(self):
+        self.timer -= 1
+        self.pulse += 0.12
+        return self.timer > 0 and not self.collected
+    
+    def draw(self, surface):
+        if self.collected:
+            return
+        
+        float_y = self.y + math.sin(self.pulse + self.float_offset) * 5
+        pulse_size = int(math.sin(self.pulse) * 4)
+        size = 20 + pulse_size
+        
+        for i in range(3):
+            glow_size = size + 15 - i * 5
+            glow_alpha = 50 - i * 15
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            
+            if self.type == 'rapid_fire':
+                pygame.draw.circle(glow_surf, (255, 200, 0, glow_alpha), (glow_size, glow_size), glow_size)
+            elif self.type == 'slow_motion':
+                pygame.draw.circle(glow_surf, (100, 150, 255, glow_alpha), (glow_size, glow_size), glow_size)
+            elif self.type == 'extra_ammo':
+                pygame.draw.circle(glow_surf, (255, 150, 50, glow_alpha), (glow_size, glow_size), glow_size)
+            elif self.type == 'double_points':
+                pygame.draw.circle(glow_surf, (255, 100, 100, glow_alpha), (glow_size, glow_size), glow_size)
+            elif self.type == 'shield':
+                pygame.draw.circle(glow_surf, (100, 200, 255, glow_alpha), (glow_size, glow_size), glow_size)
+            elif self.type == 'magnet':
+                pygame.draw.circle(glow_surf, (200, 100, 255, glow_alpha), (glow_size, glow_size), glow_size)
+            
+            surface.blit(glow_surf, (self.x - glow_size, float_y - glow_size))
+        
+        if self.type == 'rapid_fire':
+            pygame.draw.polygon(surface, GOLD, [
+                (self.x - 6, float_y - 18), (self.x + 6, float_y - 6),
+                (self.x - 3, float_y - 6), (self.x + 6, float_y + 18),
+                (self.x - 6, float_y + 6), (self.x + 3, float_y + 6)
+            ])
+        elif self.type == 'slow_motion':
+            pygame.draw.circle(surface, (50, 100, 200), (self.x, int(float_y)), size - 2)
+            pygame.draw.circle(surface, WHITE, (self.x, int(float_y)), size - 5)
+            pygame.draw.line(surface, BLACK, (self.x, int(float_y)), (self.x, int(float_y) - 12), 3)
+            pygame.draw.line(surface, BLACK, (self.x, int(float_y)), (self.x + 8, int(float_y)), 2)
+        elif self.type == 'extra_ammo':
+            pygame.draw.rect(surface, (200, 150, 50), (self.x - 12, int(float_y) - 10, 24, 20), border_radius=3)
+            pygame.draw.rect(surface, (180, 130, 40), (self.x - 9, int(float_y) - 6, 8, 14))
+            pygame.draw.rect(surface, (180, 130, 40), (self.x + 1, int(float_y) - 6, 8, 14))
+        elif self.type == 'double_points':
+            points = []
+            for i in range(10):
+                angle = math.radians(i * 36 - 90)
+                r = size if i % 2 == 0 else size // 2
+                points.append((self.x + r * math.cos(angle), float_y + r * math.sin(angle)))
+            pygame.draw.polygon(surface, GOLD, points)
+            text = font_small.render("x2", True, BLACK)
+            surface.blit(text, (self.x - text.get_width() // 2, float_y - text.get_height() // 2))
+        elif self.type == 'shield':
+            pygame.draw.polygon(surface, (100, 180, 255), [
+                (self.x, float_y - 15), (self.x + 14, float_y - 5),
+                (self.x + 10, float_y + 15), (self.x, float_y + 18),
+                (self.x - 10, float_y + 15), (self.x - 14, float_y - 5)
+            ])
+            pygame.draw.polygon(surface, WHITE, [
+                (self.x, float_y - 10), (self.x + 8, float_y - 3),
+                (self.x + 5, float_y + 8), (self.x, float_y + 10),
+                (self.x - 5, float_y + 8), (self.x - 8, float_y - 3)
+            ])
+        elif self.type == 'magnet':
+            pygame.draw.arc(surface, RED, (self.x - 12, float_y - 12, 24, 24), 0, math.pi, 5)
+            pygame.draw.rect(surface, RED, (self.x - 12, int(float_y), 8, 12))
+            pygame.draw.rect(surface, (50, 50, 200), (self.x + 4, int(float_y), 8, 12))
+    
+    def check_collect(self, cx, cy, magnet_active=False):
+        collect_radius = 80 if magnet_active else 35
+        dist = math.sqrt((self.x - cx) ** 2 + (self.y - cy) ** 2)
+        if dist < collect_radius:
+            self.collected = True
+            return self.type
+        return None
+
+# ============ SISTEMA QTE MEJORADO ============
+class QTESystem:
+    def __init__(self):
+        self.active = False
+        self.keys_sequence = []
+        self.current_index = 0
+        self.time_limit = 0
+        self.timer = 0
+        self.success = False
+        self.failed = False
+        self.penalty_points = 0
+        self.display_timer = 0
+        self.particles = []
+        self.shake_intensity = 0
+        
+    def start_qte(self, difficulty=1, time_based=False):
+        self.active = True
+        num_keys = min(3 + difficulty, 6)
+        self.keys_sequence = [random.choice(['W', 'A', 'S', 'D', 'Q', 'E', 'R', 'F']) for _ in range(num_keys)]
+        self.current_index = 0
+        
+        if time_based:
+            base_time = max(30, 150 - difficulty * 15)
+        else:
+            base_time = max(45, 200 - difficulty * 20)
+            
+        self.time_limit = base_time
+        self.timer = self.time_limit
+        self.success = False
+        self.failed = False
+        self.penalty_points = 150 + difficulty * 75
+        self.display_timer = 0
+        self.particles = []
+        
+    def update(self):
+        if not self.active:
+            return None
+        
+        self.timer -= 1
+        self.display_timer += 1
+        
+        if self.timer < 60:
+            self.shake_intensity = int((60 - self.timer) / 10)
+            
+            if random.random() < 0.3:
+                self.particles.append({
+                    'x': random.randint(100, SCREEN_WIDTH - 100),
+                    'y': random.randint(100, 300),
+                    'size': random.randint(2, 5),
+                    'color': RED if self.timer < 30 else (255, 150, 0),
+                    'life': random.randint(20, 40)
+                })
+        
+        for p in self.particles[:]:
+            p['life'] -= 1
+            if p['life'] <= 0:
+                self.particles.remove(p)
+        
+        if self.timer <= 0 and not self.success:
+            self.failed = True
+            self.active = False
+            return -self.penalty_points
+        
+        if self.success:
+            self.active = False
+            return self.penalty_points
+        
+        return None
+    
+    def check_key(self, key):
+        if not self.active or self.success or self.failed:
+            return
+        
+        key_map = {
+            pygame.K_w: 'W', pygame.K_a: 'A', 
+            pygame.K_s: 'S', pygame.K_d: 'D',
+            pygame.K_q: 'Q', pygame.K_e: 'E',
+            pygame.K_r: 'R', pygame.K_f: 'F'
+        }
+        
+        if key not in key_map:
+            return
+        
+        pressed = key_map[key]
+        expected = self.keys_sequence[self.current_index]
+        
+        if pressed == expected:
+            self.current_index += 1
+            for _ in range(5):
+                self.particles.append({
+                    'x': SCREEN_WIDTH // 2 - 150 + self.current_index * 60,
+                    'y': 250,
+                    'size': random.randint(3, 6),
+                    'color': GREEN,
+                    'life': random.randint(15, 30),
+                    'vy': random.uniform(-2, -1)
+                })
+            
+            if self.current_index >= len(self.keys_sequence):
+                self.success = True
+        else:
+            self.shake_intensity = 10
+            for _ in range(10):
+                self.particles.append({
+                    'x': SCREEN_WIDTH // 2 - 150 + self.current_index * 60,
+                    'y': 250,
+                    'size': random.randint(2, 4),
+                    'color': RED,
+                    'life': random.randint(10, 20),
+                    'vx': random.uniform(-3, 3)
+                })
+            self.failed = True
+            self.active = False
+    
+    def draw(self, surface):
+        if not self.active and self.display_timer < 60:
+            return
+        
+        panel_w = 450
+        panel_h = 160
+        panel_x = SCREEN_WIDTH // 2 - panel_w // 2
+        panel_y = 140 + random.randint(-self.shake_intensity, self.shake_intensity)
+        
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        for y in range(panel_h):
+            alpha = 220 - y // 4
+            pygame.draw.line(panel_surf, (20, 20, 40, alpha), (0, y), (panel_w, y))
+        
+        border_color = NEON_BLUE if self.timer > 60 else (NEON_GREEN if self.timer > 30 else RED)
+        for i in range(3):
+            pygame.draw.rect(panel_surf, (*border_color, 100 - i*30), 
+                           (i, i, panel_w - i*2, panel_h - i*2), 3, border_radius=12)
+        
+        surface.blit(panel_surf, (panel_x, panel_y))
+        
+        title_text = "¡REACCIONA! QTE" if self.timer > 60 else "¡RÁPIDO! QTE" if self.timer > 30 else "¡DEMASIADO LENTO!"
+        title_color = WHITE if self.timer > 60 else (255, 200, 100) if self.timer > 30 else RED
+        title = font_medium.render(title_text, True, title_color)
+        surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, panel_y + 15))
+        
+        for p in self.particles:
+            pygame.draw.circle(surface, p['color'], 
+                             (int(p['x']), int(p['y'])), 
+                             max(1, p['size']))
+        
+        key_x = SCREEN_WIDTH // 2 - (len(self.keys_sequence) * 55) // 2
+        for i, key in enumerate(self.keys_sequence):
+            x = key_x + i * 55
+            y = panel_y + 70
+            
+            if i < self.current_index:
+                for glow in range(3):
+                    pygame.draw.rect(surface, (*GREEN, 50 - glow*15), 
+                                   (x - glow, y - glow, 50 + glow*2, 50 + glow*2), 
+                                   border_radius=8)
+                pygame.draw.rect(surface, GREEN, (x, y, 50, 50), border_radius=8)
+                
+            elif i == self.current_index and self.active:
+                pulse = int(math.sin(self.display_timer * 0.2) * 8)
+                pygame.draw.rect(surface, NEON_BLUE, 
+                               (x - pulse//2, y - pulse//2, 50 + pulse, 50 + pulse), 
+                               border_radius=8)
+                pygame.draw.rect(surface, (100, 150, 255), (x, y, 50, 50), border_radius=8)
+                
+                arrow_y = y - 25
+                points = [(x + 25, arrow_y - 10), (x + 15, arrow_y), (x + 35, arrow_y)]
+                pygame.draw.polygon(surface, NEON_BLUE, points)
+                
+            else:
+                pygame.draw.rect(surface, (40, 40, 60), (x, y, 50, 50), border_radius=8)
+                pygame.draw.rect(surface, (60, 60, 90), (x, y, 50, 50), 2, border_radius=8)
+            
+            key_text = font_medium.render(key, True, WHITE)
+            surface.blit(key_text, (x + 25 - key_text.get_width() // 2, y + 10))
+        
+        bar_width = panel_w - 60
+        bar_x = panel_x + 30
+        bar_y = panel_y + 130
+        
+        pygame.draw.rect(surface, (30, 30, 50), (bar_x, bar_y, bar_width, 12), border_radius=6)
+        
+        time_ratio = self.timer / self.time_limit
+        fill_width = int(bar_width * time_ratio)
+        
+        if time_ratio > 0.6:
+            bar_color = NEON_GREEN
+        elif time_ratio > 0.3:
+            bar_color = (255, 200, 50)
+        else:
+            bar_color = RED
+            if (self.display_timer % 10) < 5:
+                bar_color = (255, 100, 100)
+        
+        pygame.draw.rect(surface, bar_color, (bar_x, bar_y, fill_width, 12), border_radius=6)
+        
+        pygame.draw.rect(surface, (80, 80, 100), (bar_x, bar_y, bar_width, 12), 2, border_radius=6)
+        
+        time_text = font_tiny.render(f"Tiempo: {self.timer/60:.1f}s", True, WHITE)
+        surface.blit(time_text, (SCREEN_WIDTH // 2 - time_text.get_width() // 2, bar_y + 15))
+
+# ============ BOSSES DEL MODO SECRETO MEJORADOS ============
+SECRET_BOSSES = [
+    {
+        "name": "SOMBRA ALADA",
+        "description": "El guardián ancestral de la cueva",
+        "color": (60, 60, 80),
+        "health": 3,
+        "points": 1000,
+        "speed": 3.0,
+        "abilities": ["teleport", "clone"],
+        "intro_lines": [
+            "Las sombras son mi reino...",
+            "Ninguna luz puede penetrar mi oscuridad...",
+            "Prepárate para desaparecer..."
+        ]
+    },
+    {
+        "name": "FÉNIX OSCURO", 
+        "description": "Renace de las cenizas del inframundo",
+        "color": (200, 50, 30),
+        "health": 4,
+        "points": 1500,
+        "speed": 3.5,
+        "abilities": ["rebirth", "fire_trail"],
+        "intro_lines": [
+            "De la muerte, renaceré...",
+            "Mis llamas consumen la esperanza...",
+            "Arderás en el fuego eterno..."
+        ]
+    },
+    {
+        "name": "ESPECTRO DEL VACÍO",
+        "description": "Maestro de las dimensiones oscuras",
+        "color": (100, 50, 150),
+        "health": 5,
+        "points": 2000,
+        "speed": 4.0,
+        "abilities": ["phase", "void_blast"],
+        "intro_lines": [
+            "El vacío te espera...",
+            "Tu existencia es insignificante...",
+            "Desaparecerás en la nada..."
+        ]
+    },
+    {
+        "name": "DEMONIO CARMESÍ",
+        "description": "Señor del río de sangre infernal",
+        "color": (180, 20, 20),
+        "health": 6,
+        "points": 2500,
+        "speed": 4.5,
+        "abilities": ["blood_pool", "rage"],
+        "intro_lines": [
+            "La sangre será tu perdición...",
+            "Mis gritos resonarán en tu alma...",
+            "Tu sufrimiento me alimenta..."
+        ]
+    },
+    {
+        "name": "TITÁN INFERNAL",
+        "description": "La encarnación final del caos",
+        "color": (255, 80, 0),
+        "health": 8,
+        "points": 5000,
+        "speed": 5.0,
+        "abilities": ["earthquake", "meteor", "apocalypse"],
+        "intro_lines": [
+            "YO SOY EL FIN...",
+            "EL CAOS SE MANIFIESTA...",
+            "TODO TERMINA AQUÍ, CAZADOR..."
+        ]
+    }
+]
+
+# Puntos mínimos requeridos por nivel en modo secreto
+SECRET_MODE_REQUIREMENTS = {
+    1: 300,
+    2: 600,
+    3: 1000,
+    4: 1500,
+    5: 2200,
+}
+
+# ============ CLASE DUCK MEJORADA PARA BOSSES ============
+class Duck:
+    def __init__(self, difficulty=1.0, is_boss=False, boss_data=None):
+        self.x = random.randint(MIN_SPAWN_X, MAX_SPAWN_X)
+        self.y = random.randint(MIN_SPAWN_Y, MAX_SPAWN_Y)
+        self.x = max(MIN_SPAWN_X, min(self.x, MAX_SPAWN_X))
+        self.y = max(MIN_SPAWN_Y, min(self.y, MAX_SPAWN_Y))
+        
+        self.is_boss = is_boss
+        self.boss_data = boss_data
+        self.phase = 0
+        self.phase_timer = 0
+        self.ability_cooldown = 0
+        self.trail = []
+        self.clone = None if not is_boss or "clone" not in boss_data.get("abilities", []) else None
+        
+        if is_boss and boss_data:
+            self.health = boss_data.get("health", 3)
+            self.max_health = self.health
+            self.points = boss_data.get("points", 500)
+            self.speed = boss_data.get("speed", 3.0)
+            self.abilities = boss_data.get("abilities", [])
+        else:
+            self.health = 1
+            self.max_health = 1
+            self.points = int(100 * difficulty)
+            self.speed = 2.0 + difficulty * 0.6
+            self.abilities = []
+        
+        angle = random.uniform(0, math.pi * 2)
+        self.speed_x = math.cos(angle) * self.speed
+        self.speed_y = math.sin(angle) * self.speed
+        self.alive = True
+        self.falling = False
+        self.fall_speed = 0
+        self.wing_angle = 0
+        self.wing_direction = 1
+        self.color_variant = 'boss' if is_boss else random.choice(['yellow', 'brown', 'white', 'green', 'blue'])
+        self.escape_timer = 0
+        self.escaping = False
+        self.rotation = 0
+        self.scale = 1.8 if is_boss else 1.0
+        self.hit_flash = 0
+        self.invulnerable = 0
+        self.trail_particles = []
+        self.last_trail_time = 0
+        self.glow_pulse = 0
+        
+        if is_boss:
+            self.aura_color = boss_data["color"] if boss_data else (255, 100, 100)
+            self.aura_size = 0
+    
+    def check_hit(self, mx, my):
+        if self.alive and not self.falling and self.invulnerable <= 0:
+            center_x = self.x + DUCK_WIDTH * self.scale // 2
+            center_y = self.y + DUCK_HEIGHT * self.scale // 2
+            dist = math.sqrt((center_x - mx) ** 2 + (center_y - my) ** 2)
+            hit_radius = 35 * self.scale
+            if dist < hit_radius:
+                self.health -= 1
+                self.hit_flash = 15
+                if self.is_boss:
+                    self.invulnerable = 20
+                
+                if self.health <= 0:
+                    self.alive = False
+                    self.falling = True
+                    return True
+                return 'damaged'
+        return False
+    
+    def use_ability(self, ability):
+        if ability == "teleport":
+            self.x = random.randint(MIN_SPAWN_X, MAX_SPAWN_X)
+            self.y = random.randint(MIN_SPAWN_Y, MAX_SPAWN_Y)
+            for _ in range(20):
+                self.trail_particles.append(Particle(self.x, self.y, 'magic', self.aura_color))
+                
+        elif ability == "clone" and not self.clone:
+            self.clone = Duck(difficulty=3, is_boss=True, boss_data=self.boss_data)
+            self.clone.x = self.x + 100
+            self.clone.y = self.y
+            self.clone.health = 1
+            
+        elif ability == "fire_trail":
+            for _ in range(10):
+                self.trail_particles.append(Particle(self.x, self.y, 'ember'))
+                
+        elif ability == "phase":
+            self.invulnerable = 60
+            for _ in range(15):
+                self.trail_particles.append(Particle(self.x, self.y, 'magic', DARK_PURPLE))
+    
+    def update(self, slow_motion=False):
+        self.glow_pulse += 0.1
+        self.phase += 0.05
+        self.phase_timer += 1
+        
+        speed_mult = 0.25 if slow_motion else 1.0
+        
+        if self.hit_flash > 0:
+            self.hit_flash -= 1
+        
+        if self.invulnerable > 0:
+            self.invulnerable -= 1
+            self.aura_size = math.sin(self.glow_pulse * 3) * 10 + 20
+        
+        if self.clone:
+            if not self.clone.update(slow_motion):
+                self.clone = None
+        
+        if self.is_boss and self.alive and not self.falling:
+            if self.ability_cooldown <= 0 and self.abilities:
+                ability = random.choice(self.abilities)
+                self.use_ability(ability)
+                self.ability_cooldown = random.randint(120, 240)
+            else:
+                self.ability_cooldown -= 1
+            
+            if "earthquake" in self.abilities and self.phase_timer % 100 == 0:
+                return "earthquake"
+            
+            self.aura_size = math.sin(self.glow_pulse) * 8 + 15
+        
+        self.trail_particles = [p for p in self.trail_particles if p.update()]
+        if self.is_boss and self.alive and not self.falling:
+            if pygame.time.get_ticks() - self.last_trail_time > 80:
+                trail_type = 'ember' if 'fire_trail' in self.abilities else 'smoke'
+                self.trail_particles.append(Particle(
+                    self.x + DUCK_WIDTH * self.scale // 2,
+                    self.y + DUCK_HEIGHT * self.scale // 2,
+                    trail_type,
+                    self.aura_color
+                ))
+                self.last_trail_time = pygame.time.get_ticks()
+        
+        if self.falling:
+            self.fall_speed += 0.6
+            self.y += self.fall_speed
+            self.rotation += 8
+            self.x += self.speed_x * 0.3
+            if self.y > SCREEN_HEIGHT - GRASS_HEIGHT + 20:
+                return False
+            return True
+        
+        if self.alive:
+            self.escape_timer += 1
+            if self.escape_timer > 550:
+                self.escaping = True
+            
+            if self.escaping:
+                self.speed_y = -6 * speed_mult
+                self.y += self.speed_y
+                if self.y < -DUCK_HEIGHT - 20:
+                    return False
+            else:
+                self.x += self.speed_x * speed_mult
+                self.y += self.speed_y * speed_mult
+                
+                if self.is_boss:
+                    self.y += math.sin(self.phase) * 0.8
+                    self.x += math.cos(self.phase * 0.7) * 0.5
+                
+                if self.x <= 0:
+                    self.x = 0
+                    self.speed_x = abs(self.speed_x)
+                    if self.is_boss:
+                        for _ in range(5):
+                            self.trail_particles.append(Particle(self.x, self.y, 'spark'))
+                elif self.x >= SCREEN_WIDTH - DUCK_WIDTH * self.scale:
+                    self.x = SCREEN_WIDTH - DUCK_WIDTH * self.scale
+                    self.speed_x = -abs(self.speed_x)
+                    if self.is_boss:
+                        for _ in range(5):
+                            self.trail_particles.append(Particle(self.x, self.y, 'spark'))
+                
+                if self.y <= HUD_HEIGHT:
+                    self.y = HUD_HEIGHT
+                    self.speed_y = abs(self.speed_y)
+                elif self.y >= SCREEN_HEIGHT - GRASS_HEIGHT - DUCK_HEIGHT * self.scale:
+                    self.y = SCREEN_HEIGHT - GRASS_HEIGHT - DUCK_HEIGHT * self.scale
+                    self.speed_y = -abs(self.speed_y)
+            
+            self.wing_angle += 0.6 * self.wing_direction * speed_mult
+            if self.wing_angle > 1.5 or self.wing_angle < -1.5:
+                self.wing_direction *= -1
+        
+        return True
+    
+    def draw(self, surface, shaker):
+        if self.clone:
+            self.clone.draw(surface, shaker)
+        
+        for particle in self.trail_particles:
+            particle.draw(surface)
+        
+        if self.is_boss and self.boss_data:
+            if self.aura_size > 0:
+                for i in range(3):
+                    aura_alpha = 100 - i * 30
+                    aura_color = (*self.aura_color, aura_alpha)
+                    aura_radius = int(self.aura_size + i * 5)
+                    pygame.draw.circle(surface, aura_color,
+                                     (int(self.x + DUCK_WIDTH * self.scale // 2) + shaker.offset_x,
+                                      int(self.y + DUCK_HEIGHT * self.scale // 2) + shaker.offset_y),
+                                     aura_radius, 3)
+            
+            colors = {
+                'boss': (self.boss_data["color"],
+                        (max(0, self.boss_data["color"][0] - 40),
+                         max(0, self.boss_data["color"][1] - 40),
+                         max(0, self.boss_data["color"][2] - 40)),
+                        (min(255, self.boss_data["color"][0] + 40),
+                         min(255, self.boss_data["color"][1] + 40),
+                         min(255, self.boss_data["color"][2] + 40)))
+            }
+        else:
+            colors = {
+                'yellow': (DUCK_YELLOW, DUCK_ORANGE, (0, 150, 0)),
+                'brown': (DUCK_BROWN, (100, 60, 30), (60, 100, 60)),
+                'white': (DUCK_WHITE, (200, 200, 200), (180, 180, 180)),
+                'green': ((50, 180, 50), (30, 140, 30), (40, 120, 40)),
+                'blue': ((100, 150, 220), (70, 120, 180), (60, 100, 160)),
+                'boss': ((180, 50, 50), (120, 30, 30), (100, 20, 20))
+            }
+        
+        default_colors = colors.get('yellow', (DUCK_YELLOW, DUCK_ORANGE, (0, 150, 0)))
+        body_color, wing_color, head_color = colors.get(self.color_variant, default_colors)
+        
+        if self.hit_flash > 0 and self.hit_flash % 4 < 2:
+            body_color = WHITE
+            wing_color = WHITE
+            head_color = WHITE
+        
+        x, y = int(self.x + shaker.offset_x), int(self.y + shaker.offset_y)
+        facing_right = self.speed_x >= 0
+        scale = self.scale
+        
+        if self.is_boss and self.invulnerable > 0:
+            alpha = int(128 + 127 * math.sin(self.glow_pulse * 5))
+            body_color = (*body_color[:3], alpha)
+            wing_color = (*wing_color[:3], alpha)
+            head_color = (*head_color[:3], alpha)
+        
+        if self.falling:
+            pygame.draw.ellipse(surface, body_color, (x + int(8*scale), y + int(8*scale), int(38*scale), int(28*scale)))
+            pygame.draw.circle(surface, head_color, (x + int(28*scale), y + int(35*scale)), int(12*scale))
+            pygame.draw.line(surface, BLACK, (x + int(24*scale), y + int(31*scale)), (x + int(30*scale), y + int(37*scale)), 3)
+            pygame.draw.line(surface, BLACK, (x + int(30*scale), y + int(31*scale)), (x + int(24*scale), y + int(37*scale)), 3)
+            pygame.draw.ellipse(surface, wing_color, (x - int(5*scale), y + int(10*scale), int(20*scale), int(12*scale)))
+            pygame.draw.ellipse(surface, wing_color, (x + int(35*scale), y + int(10*scale), int(20*scale), int(12*scale)))
+        else:
+            if facing_right:
+                pygame.draw.ellipse(surface, body_color, (x + int(3*scale), y + int(18*scale), int(42*scale), int(26*scale)))
+                pygame.draw.circle(surface, head_color, (x + int(42*scale), y + int(14*scale)), int(14*scale))
+                pygame.draw.circle(surface, WHITE, (x + int(47*scale), y + int(11*scale)), int(5*scale))
+                pygame.draw.circle(surface, BLACK, (x + int(48*scale), y + int(11*scale)), int(3*scale))
+                pygame.draw.circle(surface, WHITE, (x + int(49*scale), y + int(10*scale)), 1)
+                pygame.draw.polygon(surface, DUCK_ORANGE, [(x + int(53*scale), y + int(16*scale)), 
+                                                          (x + int(66*scale), y + int(18*scale)), 
+                                                          (x + int(53*scale), y + int(21*scale))])
+                wing_y_offset = int(self.wing_angle * 7 * scale)
+                pygame.draw.ellipse(surface, wing_color, (x + int(10*scale), y + int(20*scale) + wing_y_offset, int(26*scale), int(14*scale)))
+                pygame.draw.polygon(surface, wing_color, [(x - int(3*scale), y + int(22*scale)), 
+                                                         (x + int(8*scale), y + int(28*scale)), 
+                                                         (x - int(3*scale), y + int(35*scale))])
+            else:
+                pygame.draw.ellipse(surface, body_color, (x + int(10*scale), y + int(18*scale), int(42*scale), int(26*scale)))
+                pygame.draw.circle(surface, head_color, (x + int(13*scale), y + int(14*scale)), int(14*scale))
+                pygame.draw.circle(surface, WHITE, (x + int(8*scale), y + int(11*scale)), int(5*scale))
+                pygame.draw.circle(surface, BLACK, (x + int(7*scale), y + int(11*scale)), int(3*scale))
+                pygame.draw.circle(surface, WHITE, (x + int(6*scale), y + int(10*scale)), 1)
+                pygame.draw.polygon(surface, DUCK_ORANGE, [(x + int(2*scale), y + int(16*scale)), 
+                                                          (x - int(11*scale), y + int(18*scale)), 
+                                                          (x + int(2*scale), y + int(21*scale))])
+                wing_y_offset = int(self.wing_angle * 7 * scale)
+                pygame.draw.ellipse(surface, wing_color, (x + int(19*scale), y + int(20*scale) + wing_y_offset, int(26*scale), int(14*scale)))
+                pygame.draw.polygon(surface, wing_color, [(x + int(58*scale), y + int(22*scale)), 
+                                                         (x + int(47*scale), y + int(28*scale)), 
+                                                         (x + int(58*scale), y + int(35*scale))])
+        
+        if self.is_boss and self.health > 0 and not self.falling:
+            bar_width = int(80 * scale)
+            bar_x = x + int(DUCK_WIDTH * scale // 2) - bar_width // 2
+            bar_y = y - 25
+            
+            pygame.draw.rect(surface, (20, 20, 30), (bar_x - 2, bar_y - 2, bar_width + 4, 14), border_radius=3)
+            pygame.draw.rect(surface, (40, 40, 60), (bar_x, bar_y, bar_width, 10), border_radius=3)
+            
+            health_ratio = self.health / self.max_health
+            health_width = int(bar_width * health_ratio)
+            
+            if health_ratio > 0.6:
+                health_color = NEON_GREEN
+            elif health_ratio > 0.3:
+                health_color = (255, 165, 0)
+            else:
+                health_color = RED
+                if (pygame.time.get_ticks() // 200) % 2 == 0:
+                    health_color = (255, 100, 100)
+            
+            pygame.draw.rect(surface, health_color, (bar_x, bar_y, health_width, 10), border_radius=3)
+            
+            if health_width > 10:
+                glow_width = min(health_width, 20)
+                glow_surf = pygame.Surface((glow_width, 10), pygame.SRCALPHA)
+                for i in range(glow_width):
+                    alpha = int(100 * (1 - i / glow_width))
+                    pygame.draw.line(glow_surf, (*WHITE, alpha), (i, 0), (i, 10))
+                surface.blit(glow_surf, (bar_x + health_width - glow_width, bar_y))
+            
+            health_text = font_tiny.render(f"{self.health}/{self.max_health}", True, WHITE)
+            surface.blit(health_text, (bar_x + bar_width//2 - health_text.get_width()//2, bar_y - 15))
+            
+            if self.boss_data:
+                name_text = font_tiny.render(self.boss_data["name"], True, self.aura_color)
+                surface.blit(name_text, (bar_x + bar_width//2 - name_text.get_width()//2, bar_y - 35))
+
+# ============ FUNCIONES DE DIBUJO MEJORADAS ============
+def draw_background(surface, clouds, time_of_day='day', stars=None, frame=0):
+    if time_of_day == 'night':
+        for y_pos in range(SCREEN_HEIGHT - GRASS_HEIGHT):
+            ratio = y_pos / (SCREEN_HEIGHT - GRASS_HEIGHT)
+            r = int(SKY_NIGHT[0] + ratio * 25)
+            g = int(SKY_NIGHT[1] + ratio * 25)
+            b = int(SKY_NIGHT[2] + ratio * 40)
+            pygame.draw.line(surface, (r, g, b), (0, y_pos), (SCREEN_WIDTH, y_pos))
+        
+        if stars:
+            for star in stars:
+                star.update()
+                star.draw(surface)
+        
+        for i in range(4):
+            glow_alpha = 30 - i * 7
+            glow_size = 55 + i * 15
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (240, 240, 200, glow_alpha), (glow_size, glow_size), glow_size)
+            surface.blit(glow_surf, (720 - glow_size, 85 - glow_size))
+        
+        pygame.draw.circle(surface, MOON_WHITE, (720, 85), 40)
+        pygame.draw.circle(surface, (210, 210, 190), (708, 78), 10)
+        pygame.draw.circle(surface, (200, 200, 180), (732, 95), 8)
+        pygame.draw.circle(surface, (195, 195, 175), (718, 100), 5)
+        pygame.draw.circle(surface, (190, 190, 170), (705, 92), 4)
+        
+    elif time_of_day == 'sunset':
+        for y_pos in range(SCREEN_HEIGHT - GRASS_HEIGHT):
+            ratio = y_pos / (SCREEN_HEIGHT - GRASS_HEIGHT)
+            r = int(255 - ratio * 60)
+            g = int(140 - ratio * 90)
+            b = int(80 + ratio * 60)
+            pygame.draw.line(surface, (r, g, b), (0, y_pos), (SCREEN_WIDTH, y_pos))
+        
+        sun_y = SCREEN_HEIGHT - GRASS_HEIGHT - 15
+        for i in range(5):
+            glow_alpha = 40 - i * 8
+            glow_size = 65 + i * 20
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (255, 150, 50, glow_alpha), (glow_size, glow_size), glow_size)
+            surface.blit(glow_surf, (720 - glow_size, sun_y - glow_size))
+        
+        pygame.draw.circle(surface, (255, 100, 50), (720, sun_y), 50)
+        pygame.draw.circle(surface, (255, 150, 50), (720, sun_y), 40)
+        pygame.draw.circle(surface, (255, 200, 100), (720, sun_y), 30)
+    
+    elif time_of_day == 'hell':
+        for y_pos in range(SCREEN_HEIGHT - GRASS_HEIGHT):
+            ratio = y_pos / (SCREEN_HEIGHT - GRASS_HEIGHT)
+            pulse = math.sin(frame * 0.02 + y_pos * 0.01) * 15
+            r = int(60 + ratio * 40 + pulse)
+            g = int(15 + ratio * 10)
+            b = int(10 + ratio * 5)
+            pygame.draw.line(surface, (min(255, max(0, r)), g, b), (0, y_pos), (SCREEN_WIDTH, y_pos))
+        
+        if random.random() < 0.02:
+            lx = random.randint(50, SCREEN_WIDTH - 50)
+            for i in range(5):
+                ly = random.randint(HUD_HEIGHT, 200)
+                pygame.draw.line(surface, (255, 200, 100), (lx, ly), (lx + random.randint(-30, 30), ly + 50), 3)
+        
+    else:
+        for y_pos in range(SCREEN_HEIGHT - GRASS_HEIGHT):
+            ratio = y_pos / (SCREEN_HEIGHT - GRASS_HEIGHT)
+            r = int(SKY_BLUE[0] * (1 - ratio * 0.3) + SKY_DARK[0] * ratio * 0.3)
+            g = int(SKY_BLUE[1] * (1 - ratio * 0.3) + SKY_DARK[1] * ratio * 0.3)
+            b = int(SKY_BLUE[2] * (1 - ratio * 0.3) + SKY_DARK[2] * ratio * 0.3)
+            pygame.draw.line(surface, (r, g, b), (0, y_pos), (SCREEN_WIDTH, y_pos))
+        
+        for i in range(4):
+            glow_alpha = 35 - i * 8
+            glow_size = 60 + i * 18
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (255, 255, 200, glow_alpha), (glow_size, glow_size), glow_size)
+            surface.blit(glow_surf, (720 - glow_size, 90 - glow_size))
+        
+        for angle in range(0, 360, 20):
+            rad = math.radians(angle + frame * 0.3)
+            x1 = 720 + int(48 * math.cos(rad))
+            y1 = 90 + int(48 * math.sin(rad))
+            x2 = 720 + int(70 * math.cos(rad))
+            y2 = 90 + int(70 * math.sin(rad))
+            pygame.draw.line(surface, (255, 230, 100), (x1, y1), (x2, y2), 3)
+        
+        pygame.draw.circle(surface, SUN_YELLOW, (720, 90), 40)
+        pygame.draw.circle(surface, SUN_ORANGE, (720, 90), 32)
+    
+    if time_of_day not in ['night']:
+        for cloud in clouds:
+            cloud.draw(surface, time_of_day)
+    
+    mountain_y = SCREEN_HEIGHT - GRASS_HEIGHT
+    
+    if time_of_day == 'night':
+        mountain_colors = [(40, 50, 60), (30, 40, 50), (20, 30, 40)]
+    elif time_of_day == 'sunset':
+        mountain_colors = [(120, 80, 100), (90, 60, 80), (60, 40, 60)]
+    elif time_of_day == 'hell':
+        mountain_colors = [(60, 20, 15), (50, 15, 10), (40, 10, 5)]
+    else:
+        mountain_colors = [(140, 170, 140), (100, 140, 100), (70, 110, 70)]
+    
+    points_far = [(0, mountain_y)]
+    for i in range(0, SCREEN_WIDTH + 100, 80):
+        height = 60 + math.sin(i * 0.02) * 40
+        points_far.append((i, mountain_y - height))
+    points_far.append((SCREEN_WIDTH, mountain_y))
+    pygame.draw.polygon(surface, mountain_colors[0], points_far)
+    
+    points_mid = [(0, mountain_y)]
+    for i in range(0, SCREEN_WIDTH + 100, 60):
+        height = 45 + math.sin(i * 0.03 + 1) * 30
+        points_mid.append((i, mountain_y - height))
+    points_mid.append((SCREEN_WIDTH, mountain_y))
+    pygame.draw.polygon(surface, mountain_colors[1], points_mid)
+    
+    points_near = [(0, mountain_y)]
+    for i in range(0, SCREEN_WIDTH + 100, 50):
+        height = 30 + math.sin(i * 0.04 + 2) * 20
+        points_near.append((i, mountain_y - height))
+    points_near.append((SCREEN_WIDTH, mountain_y))
+    pygame.draw.polygon(surface, mountain_colors[2], points_near)
+    
+    lake_x, lake_y = 580, SCREEN_HEIGHT - GRASS_HEIGHT + 55
+    if time_of_day == 'hell':
+        lake_color = LAVA_ORANGE
+        for i in range(3):
+            bx = lake_x + 30 + i * 35 + int(math.sin(frame * 0.1 + i) * 10)
+            by = lake_y + 15 + int(math.sin(frame * 0.15 + i * 2) * 5)
+            pygame.draw.circle(surface, (255, 150, 50), (bx, by), 5 + int(math.sin(frame * 0.2 + i) * 2))
+    else:
+        lake_color = (30, 60, 100) if time_of_day == 'night' else (
+            (180, 130, 100) if time_of_day == 'sunset' else WATER_BLUE)
+    
+    pygame.draw.ellipse(surface, lake_color, (lake_x, lake_y, 140, 50))
+    
+    if time_of_day == 'hell':
+        grass_color = (40, 20, 15)
+    else:
+        grass_color = (15, 60, 15) if time_of_day == 'night' else (
+            (80, 100, 40) if time_of_day == 'sunset' else GRASS_GREEN)
+    pygame.draw.rect(surface, grass_color, (0, SCREEN_HEIGHT - GRASS_HEIGHT, SCREEN_WIDTH, GRASS_HEIGHT))
+    
+    if time_of_day == 'hell':
+        grass_detail = (30, 15, 10)
+    else:
+        grass_detail = (0, 40, 0) if time_of_day == 'night' else (
+            (60, 80, 30) if time_of_day == 'sunset' else GRASS_DARK)
+    for i in range(0, SCREEN_WIDTH, 6):
+        height = 8 + (i * 7) % 20
+        offset = ((i * 13) % 7) - 3
+        pygame.draw.line(surface, grass_detail, 
+                        (i, SCREEN_HEIGHT - GRASS_HEIGHT),
+                        (i + offset, SCREEN_HEIGHT - GRASS_HEIGHT - height), 2)
+    
+    if time_of_day != 'hell':
+        draw_tree(surface, 35, SCREEN_HEIGHT - GRASS_HEIGHT, time_of_day, 1.2)
+        draw_tree(surface, SCREEN_WIDTH - 80, SCREEN_HEIGHT - GRASS_HEIGHT, time_of_day, 0.9)
+    else:
+        draw_dead_tree(surface, 35, SCREEN_HEIGHT - GRASS_HEIGHT, 1.2)
+        draw_dead_tree(surface, SCREEN_WIDTH - 80, SCREEN_HEIGHT - GRASS_HEIGHT, 0.9)
+    
+    if time_of_day == 'hell':
+        bush_color = (50, 20, 15)
+        bush_dark = (30, 10, 5)
+    else:
+        bush_color = (0, 50, 0) if time_of_day == 'night' else (
+            (60, 80, 30) if time_of_day == 'sunset' else BUSH_GREEN)
+        bush_dark = (0, 30, 0) if time_of_day == 'night' else (
+            (40, 60, 20) if time_of_day == 'sunset' else BUSH_DARK)
+    
+    bush_positions = [(140, 30), (300, 38), (450, 32), (750, 35), (850, 28)]
+    for bx, bh in bush_positions:
+        by = SCREEN_HEIGHT - GRASS_HEIGHT
+        pygame.draw.ellipse(surface, bush_dark, (bx - 28, by - bh + 6, 56, bh + 5))
+        pygame.draw.ellipse(surface, bush_color, (bx - 24, by - bh - 4, 48, bh + 8))
+        pygame.draw.ellipse(surface, bush_color, (bx - 15, by - bh - 10, 30, bh))
+
+def draw_tree(surface, x, y, time_of_day, scale=1.0):
+    if time_of_day == 'night':
+        trunk_color = (50, 30, 15)
+        leaves_color = (10, 60, 10)
+        leaves_dark = (5, 40, 5)
+    elif time_of_day == 'sunset':
+        trunk_color = (100, 50, 25)
+        leaves_color = (60, 90, 30)
+        leaves_dark = (40, 70, 20)
+    else:
+        trunk_color = TREE_BROWN
+        leaves_color = TREE_GREEN
+        leaves_dark = TREE_DARK
+    
+    trunk_w = int(35 * scale)
+    trunk_h = int(130 * scale)
+    pygame.draw.rect(surface, trunk_color, (x, y - trunk_h, trunk_w, trunk_h))
+    pygame.draw.rect(surface, (trunk_color[0] - 20, trunk_color[1] - 10, trunk_color[2] - 5), 
+                    (x + trunk_w - 8, y - trunk_h, 8, trunk_h))
+    
+    center_x = x + trunk_w // 2
+    pygame.draw.circle(surface, leaves_dark, (center_x - 20, y - trunk_h - 10), int(40 * scale))
+    pygame.draw.circle(surface, leaves_dark, (center_x + 25, y - trunk_h), int(35 * scale))
+    pygame.draw.circle(surface, leaves_color, (center_x, y - trunk_h - 40), int(55 * scale))
+    pygame.draw.circle(surface, leaves_color, (center_x - 15, y - trunk_h - 5), int(45 * scale))
+    pygame.draw.circle(surface, leaves_color, (center_x + 20, y - trunk_h - 15), int(40 * scale))
+
+def draw_dead_tree(surface, x, y, scale=1.0):
+    trunk_color = (40, 25, 20)
+    trunk_w = int(25 * scale)
+    trunk_h = int(120 * scale)
+    
+    pygame.draw.rect(surface, trunk_color, (x, y - trunk_h, trunk_w, trunk_h))
+    
+    pygame.draw.line(surface, trunk_color, (x + trunk_w // 2, y - trunk_h + 20), 
+                    (x - 30 * scale, y - trunk_h - 20), int(5 * scale))
+    pygame.draw.line(surface, trunk_color, (x + trunk_w // 2, y - trunk_h + 40), 
+                    (x + 50 * scale, y - trunk_h), int(4 * scale))
+    pygame.draw.line(surface, trunk_color, (x + trunk_w // 2, y - trunk_h), 
+                    (x + trunk_w // 2, y - trunk_h - 30), int(6 * scale))
+
+def draw_hell_background(surface, frame, shaker, intensity=1.0):
+    for y in range(SCREEN_HEIGHT - GRASS_HEIGHT):
+        ratio = y / (SCREEN_HEIGHT - GRASS_HEIGHT)
+        
+        r_base = 60 + ratio * 40
+        g_base = 15 + ratio * 10
+        b_base = 10 + ratio * 5
+        
+        pulse1 = math.sin(frame * 0.03 + y * 0.01) * 15 * intensity
+        pulse2 = math.sin(frame * 0.05 + y * 0.02) * 8 * intensity
+        
+        lightning = 0
+        if random.random() < 0.01 * intensity:
+            lightning = random.randint(30, 80)
+        
+        r = int(r_base + pulse1 + lightning)
+        g = int(g_base + pulse2 + lightning * 0.3)
+        b = int(b_base + lightning * 0.5)
+        
+        pygame.draw.line(surface, (min(255, max(0, r)), min(255, max(0, g)), b), 
+                        (0, y + shaker.offset_y), (SCREEN_WIDTH, y + shaker.offset_y))
+    
+    if random.random() < 0.02 * intensity:
+        lx = random.randint(100, SCREEN_WIDTH - 100)
+        for i in range(random.randint(2, 4)):
+            segment_length = random.randint(50, 100)
+            segment_angle = random.uniform(-0.5, 0.5)
+            
+            points = [(lx, 0)]
+            current_x, current_y = lx, 0
+            
+            for _ in range(3):
+                current_x += random.randint(-30, 30)
+                current_y += segment_length // 3
+                points.append((current_x + shaker.offset_x, current_y + shaker.offset_y))
+            
+            for j in range(3):
+                color = (255, 255, 200, 150 - j*50)
+                pygame.draw.lines(surface, color, False, points, 4 - j)
+    
+    mountain_y = SCREEN_HEIGHT - GRASS_HEIGHT
+    colors = [
+        (50, 15, 10),
+        (40, 10, 5),
+        (30, 5, 0)
+    ]
+    
+    for layer, color in enumerate(colors):
+        points = [(0, mountain_y + shaker.offset_y)]
+        for i in range(0, SCREEN_WIDTH + 100, 40):
+            height = (60 - layer * 20) + math.sin(i * 0.03 + layer) * (40 - layer * 10)
+            points.append((i + shaker.offset_x, mountain_y - height + shaker.offset_y))
+        points.append((SCREEN_WIDTH, mountain_y + shaker.offset_y))
+        
+        heat_wave = math.sin(frame * 0.02 + layer) * 2
+        adjusted_color = (
+            min(255, color[0] + int(heat_wave * 5)),
+            max(0, color[1] + int(heat_wave * 2)),
+            color[2]
+        )
+        
+        pygame.draw.polygon(surface, adjusted_color, points)
+    
+    lava_y = SCREEN_HEIGHT - GRASS_HEIGHT + 40
+    
+    pygame.draw.ellipse(surface, LAVA_ORANGE, 
+                       (500 + shaker.offset_x, lava_y + shaker.offset_y, 200, 60))
+    
+    for i in range(5):
+        bubble_x = 550 + i * 35 + math.sin(frame * 0.1 + i) * 15
+        bubble_y = lava_y + 15 + math.sin(frame * 0.15 + i * 2) * 5
+        bubble_size = 8 + math.sin(frame * 0.2 + i) * 3
+        
+        pygame.draw.circle(surface, (255, 200, 100), 
+                          (int(bubble_x) + shaker.offset_x, int(bubble_y) + shaker.offset_y), 
+                          int(bubble_size))
+        
+        pygame.draw.circle(surface, (255, 255, 200),
+                          (int(bubble_x - 2) + shaker.offset_x, int(bubble_y - 2) + shaker.offset_y),
+                          int(bubble_size * 0.3))
+    
+    ground_y = SCREEN_HEIGHT - GRASS_HEIGHT
+    ground_color = (40, 20, 15)
+    
+    pygame.draw.rect(surface, ground_color, 
+                    (0, ground_y + shaker.offset_y, SCREEN_WIDTH, GRASS_HEIGHT))
+    
+    for i in range(0, SCREEN_WIDTH, 70):
+        crack_x = i + random.randint(-20, 20)
+        crack_length = random.randint(20, 60)
+        crack_width = random.randint(2, 4)
+        
+        pygame.draw.line(surface, (20, 10, 5),
+                        (crack_x + shaker.offset_x, ground_y + shaker.offset_y),
+                        (crack_x + random.randint(-10, 10) + shaker.offset_x, 
+                         ground_y + crack_length + shaker.offset_y),
+                        crack_width)
+    
+    for tx in [50, SCREEN_WIDTH - 100]:
+        trunk_color = (50, 30, 25)
+        trunk_w = 30
+        trunk_h = 140
+        
+        pygame.draw.rect(surface, trunk_color,
+                        (tx + shaker.offset_x, ground_y - trunk_h + shaker.offset_y, 
+                         trunk_w, trunk_h))
+
+def draw_crosshair(surface, cx, cy, rapid_fire=False, magnet=False):
+    color = GOLD if rapid_fire else (PURPLE if magnet else RED)
+    inner_color = (255, 255, 150) if rapid_fire else ((200, 150, 255) if magnet else (255, 120, 120))
+    
+    for i in range(3):
+        glow_color = (*color[:3], 60 - i * 20) if len(color) == 3 else color
+        pygame.draw.circle(surface, glow_color, (cx, cy), 28 + i * 4, 2)
+    
+    pygame.draw.circle(surface, color, (cx, cy), 26, 3)
+    pygame.draw.circle(surface, color, (cx, cy), 12, 2)
+    pygame.draw.circle(surface, inner_color, (cx, cy), 4)
+    
+    pygame.draw.line(surface, color, (cx - 35, cy), (cx - 14, cy), 3)
+    pygame.draw.line(surface, color, (cx + 14, cy), (cx + 35, cy), 3)
+    pygame.draw.line(surface, color, (cx, cy - 35), (cx, cy - 14), 3)
+    pygame.draw.line(surface, color, (cx, cy + 14), (cx, cy + 35), 3)
+    
+    for angle in [45, 135, 225, 315]:
+        rad = math.radians(angle)
+        x1 = cx + int(20 * math.cos(rad))
+        y1 = cy + int(20 * math.sin(rad))
+        x2 = cx + int(28 * math.cos(rad))
+        y2 = cy + int(28 * math.sin(rad))
+        pygame.draw.line(surface, color, (x1, y1), (x2, y2), 2)
+
+def draw_hud(surface, score, ammo, ducks_hit, ducks_total, round_num, chapter, active_powerups, combo_display, high_score, secret_mode=False, required_score=0):
+    for y in range(HUD_HEIGHT):
+        alpha = 200 - y * 2
+        pygame.draw.line(surface, (25, 25, 35), (0, y), (SCREEN_WIDTH, y))
+    pygame.draw.line(surface, (80, 80, 100), (0, HUD_HEIGHT - 1), (SCREEN_WIDTH, HUD_HEIGHT - 1), 2)
+    
+    score_label = font_small.render("SCORE", True, (150, 150, 150))
+    surface.blit(score_label, (20, 5))
+    score_text = font_large.render(f"{score:,}", True, GOLD)
+    surface.blit(score_text, (20, 22))
+    
+    hi_text = font_tiny.render(f"HI: {high_score:,}", True, (100, 100, 100))
+    surface.blit(hi_text, (20, 52))
+    
+    if secret_mode and required_score > 0:
+        req_color = GREEN if score >= required_score else RED
+        req_text = font_small.render(f"MIN: {required_score}", True, req_color)
+        surface.blit(req_text, (150, 35))
+    
+    if chapter > 0:
+        chapter_text = font_small.render(f"CAPÍTULO {chapter}", True, (150, 150, 150))
+        surface.blit(chapter_text, (SCREEN_WIDTH // 2 - chapter_text.get_width() // 2, 5))
+    elif secret_mode:
+        secret_text = font_small.render("MODO SECRETO", True, (255, 100, 100))
+        surface.blit(secret_text, (SCREEN_WIDTH // 2 - secret_text.get_width() // 2, 5))
+    round_text = font_medium.render(f"RONDA {round_num}", True, WHITE)
+    surface.blit(round_text, (SCREEN_WIDTH // 2 - round_text.get_width() // 2, 25))
+    
+    ammo_label = font_small.render("MUNICIÓN", True, (150, 150, 150))
+    surface.blit(ammo_label, (SCREEN_WIDTH - 140, 5))
+    
+    if ammo > 10:
+        ammo_text = font_medium.render(f"{ammo}", True, GOLD)
+        surface.blit(ammo_text, (SCREEN_WIDTH - 100, 28))
+    else:
+        for i in range(3):
+            if i < ammo:
+                pygame.draw.rect(surface, (255, 200, 50), (SCREEN_WIDTH - 130 + i * 30, 32, 10, 22), border_radius=2)
+                pygame.draw.rect(surface, (200, 160, 40), (SCREEN_WIDTH - 132 + i * 30, 26, 14, 8), border_radius=2)
+            else:
+                pygame.draw.rect(surface, (50, 50, 50), (SCREEN_WIDTH - 130 + i * 30, 32, 10, 22), border_radius=2)
+                pygame.draw.rect(surface, (40, 40, 40), (SCREEN_WIDTH - 132 + i * 30, 26, 14, 8), border_radius=2)
+    
+    powerup_x = 200
+    for ptype, timer in active_powerups.items():
+        if timer > 0:
+            bar_width = 30
+            bar_fill = int(bar_width * timer / 600) if ptype == 'double_points' else int(bar_width * timer / 300)
+            
+            if ptype == 'rapid_fire':
+                pygame.draw.rect(surface, GOLD, (powerup_x, 18, 28, 28), border_radius=4)
+                pygame.draw.polygon(surface, BLACK, [(powerup_x + 10, 22), (powerup_x + 18, 30), (powerup_x + 10, 38)])
+            elif ptype == 'slow_motion':
+                pygame.draw.rect(surface, (100, 150, 255), (powerup_x, 18, 28, 28), border_radius=4)
+                text = font_small.render("SM", True, BLACK)
+                surface.blit(text, (powerup_x + 4, 22))
+            elif ptype == 'double_points':
+                pygame.draw.rect(surface, (255, 100, 100), (powerup_x, 18, 28, 28), border_radius=4)
+                text = font_small.render("x2", True, BLACK)
+                surface.blit(text, (powerup_x + 4, 22))
+            elif ptype == 'extra_ammo':
+                pygame.draw.rect(surface, (255, 180, 50), (powerup_x, 18, 28, 28), border_radius=4)
+                text = font_tiny.render("INF", True, BLACK)
+                surface.blit(text, (powerup_x + 3, 26))
+            elif ptype == 'shield':
+                pygame.draw.rect(surface, (100, 200, 255), (powerup_x, 18, 28, 28), border_radius=4)
+                text = font_small.render("SH", True, BLACK)
+                surface.blit(text, (powerup_x + 4, 22))
+            elif ptype == 'magnet':
+                pygame.draw.rect(surface, (200, 100, 255), (powerup_x, 18, 28, 28), border_radius=4)
+                text = font_small.render("MG", True, BLACK)
+                surface.blit(text, (powerup_x + 2, 22))
+            
+            pygame.draw.rect(surface, (50, 50, 50), (powerup_x, 48, bar_width, 4))
+            pygame.draw.rect(surface, GREEN, (powerup_x, 48, bar_fill, 4))
+            
+            powerup_x += 38
+    
+    panel_width = ducks_total * 48 + 24
+    panel_x = SCREEN_WIDTH // 2 - panel_width // 2
+    pygame.draw.rect(surface, (30, 30, 40), (panel_x, SCREEN_HEIGHT - 50, panel_width, 45), border_radius=10)
+    pygame.draw.rect(surface, (70, 70, 90), (panel_x, SCREEN_HEIGHT - 50, panel_width, 45), 2, border_radius=10)
+    
+    for i in range(ducks_total):
+        duck_x = panel_x + 32 + i * 48
+        if i < ducks_hit:
+            pygame.draw.circle(surface, (0, 180, 0), (duck_x, SCREEN_HEIGHT - 28), 16)
+            pygame.draw.circle(surface, (0, 255, 0), (duck_x, SCREEN_HEIGHT - 28), 12)
+            pygame.draw.line(surface, WHITE, (duck_x - 5, SCREEN_HEIGHT - 28), (duck_x - 1, SCREEN_HEIGHT - 24), 3)
+            pygame.draw.line(surface, WHITE, (duck_x - 1, SCREEN_HEIGHT - 24), (duck_x + 7, SCREEN_HEIGHT - 34), 3)
+        else:
+            pygame.draw.circle(surface, (60, 60, 70), (duck_x, SCREEN_HEIGHT - 28), 16)
+            pygame.draw.circle(surface, (45, 45, 55), (duck_x, SCREEN_HEIGHT - 28), 12)
+    
+    if combo_display:
+        combo_text = font_small.render(f"COMBO: {combo_display}", True, (255, 200, 100))
+        pygame.draw.rect(surface, (50, 40, 20), (15, SCREEN_HEIGHT - 85, combo_text.get_width() + 16, 28), border_radius=5)
+        surface.blit(combo_text, (23, SCREEN_HEIGHT - 80))
+    
+    hint_text = font_tiny.render("WASD=Mover | ESPACIO=Disparar | R=Recargar", True, (100, 100, 110))
+    surface.blit(hint_text, (SCREEN_WIDTH - hint_text.get_width() - 15, SCREEN_HEIGHT - 42))
+
+def draw_intro_screen(surface, frame, menu_selection, secret_mode_unlocked=False):
+    for y in range(SCREEN_HEIGHT):
+        ratio = y / SCREEN_HEIGHT
+        wave = math.sin(y * 0.02 + frame * 0.03) * 10
+        r = int(15 + ratio * 25 + wave)
+        g = int(30 + ratio * 35 + wave * 0.5)
+        b = int(60 + ratio * 50 + wave * 0.3)
+        pygame.draw.line(surface, (max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))), (0, y), (SCREEN_WIDTH, y))
+    
+    for i in range(60):
+        sx = (i * 89 + frame // 2) % SCREEN_WIDTH
+        sy = (i * 53) % (SCREEN_HEIGHT - 100)
+        twinkle = int(100 + 100 * math.sin(frame * 0.08 + i))
+        size = 1 if i % 3 else 2
+        pygame.draw.circle(surface, (twinkle, twinkle, min(255, twinkle + 30)), (sx, sy), size)
+    
+    title_y = 100 + int(math.sin(frame * 0.04) * 12)
+    
+    title_shadow = font_title.render("DUCK HUNT", True, (0, 0, 0))
+    surface.blit(title_shadow, (SCREEN_WIDTH // 2 - title_shadow.get_width() // 2 + 5, title_y + 5))
+    
+    for i in range(3):
+        glow_surf = font_title.render("DUCK HUNT", True, (255, 200, 50))
+        glow_surf.set_alpha(30 - i * 10)
+        surface.blit(glow_surf, (SCREEN_WIDTH // 2 - glow_surf.get_width() // 2 - i, title_y - i))
+        surface.blit(glow_surf, (SCREEN_WIDTH // 2 - glow_surf.get_width() // 2 + i, title_y + i))
+    
+    title_text = font_title.render("DUCK HUNT", True, GOLD)
+    surface.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, title_y))
+    
+    subtitle = font_medium.render("ULTIMATE EDITION", True, WHITE)
+    surface.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, title_y + 75))
+    
+    duck_x = SCREEN_WIDTH // 2 - 35 + int(math.sin(frame * 0.06) * 60)
+    duck_y = 270 + int(math.cos(frame * 0.045) * 25)
+    wing_offset = int(math.sin(frame * 0.35) * 10)
+    
+    pygame.draw.ellipse(surface, DUCK_YELLOW, (duck_x + 5, duck_y + 18, 55, 32))
+    pygame.draw.circle(surface, (0, 160, 0), (duck_x + 58, duck_y + 12), 18)
+    pygame.draw.circle(surface, WHITE, (duck_x + 64, duck_y + 8), 6)
+    pygame.draw.circle(surface, BLACK, (duck_x + 65, duck_y + 8), 4)
+    pygame.draw.polygon(surface, DUCK_ORANGE, [(duck_x + 72, duck_y + 14), (duck_x + 92, duck_y + 16), (duck_x + 72, duck_y + 20)])
+    pygame.draw.ellipse(surface, DUCK_ORANGE, (duck_x + 18, duck_y + 24 + wing_offset, 32, 18))
+    
+    menu_y = 370
+    options = ["MODO HISTORIA", "MODO ARCADE", "CONTROLES"]
+    
+    if secret_mode_unlocked:
+        options.append("MODO SECRETO")
+    
+    for i, option in enumerate(options):
+        is_selected = i == menu_selection
+        
+        opt_text = font_medium.render(option, True, WHITE)
+        opt_x = SCREEN_WIDTH // 2 - opt_text.get_width() // 2
+        
+        if is_selected:
+            box_width = opt_text.get_width() + 60
+            box_x = SCREEN_WIDTH // 2 - box_width // 2
+            
+            for g in range(3):
+                glow_rect = pygame.Rect(box_x - g * 3, menu_y + i * 50 - 8 - g * 3, box_width + g * 6, 42 + g * 6)
+                pygame.draw.rect(surface, (255, 200, 50, 40 - g * 12), glow_rect, border_radius=12)
+            
+            box_color = (80, 60, 20)
+            border_color = GOLD
+            
+            pygame.draw.rect(surface, box_color, (box_x, menu_y + i * 50 - 8, box_width, 42), border_radius=10)
+            pygame.draw.rect(surface, border_color, (box_x, menu_y + i * 50 - 8, box_width, 42), 3, border_radius=10)
+            
+            arrow_pulse = int(math.sin(frame * 0.15) * 5)
+            pygame.draw.polygon(surface, border_color, [
+                (box_x - 20 - arrow_pulse, menu_y + i * 50 + 13),
+                (box_x - 8 - arrow_pulse, menu_y + i * 50 + 6),
+                (box_x - 8 - arrow_pulse, menu_y + i * 50 + 20)
+            ])
+            pygame.draw.polygon(surface, border_color, [
+                (box_x + box_width + 20 + arrow_pulse, menu_y + i * 50 + 13),
+                (box_x + box_width + 8 + arrow_pulse, menu_y + i * 50 + 6),
+                (box_x + box_width + 8 + arrow_pulse, menu_y + i * 50 + 20)
+            ])
+            
+            selected_text = font_medium.render(option, True, border_color)
+            surface.blit(selected_text, (opt_x, menu_y + i * 50))
+        else:
+            pygame.draw.rect(surface, (35, 35, 55), (opt_x - 25, menu_y + i * 50 - 8, opt_text.get_width() + 50, 42), border_radius=10)
+            pygame.draw.rect(surface, (60, 60, 80), (opt_x - 25, menu_y + i * 50 - 8, opt_text.get_width() + 50, 42), 2, border_radius=10)
+            surface.blit(opt_text, (opt_x, menu_y + i * 50))
+    
+    instr_text = font_small.render("W/S = Navegar | ESPACIO = Seleccionar | ESC = Salir", True, (150, 150, 170))
+    surface.blit(instr_text, (SCREEN_WIDTH // 2 - instr_text.get_width() // 2, SCREEN_HEIGHT - 55))
+    
+    version_text = font_tiny.render("v3.0 Ultimate Edition - Python/Pygame", True, (80, 80, 100))
+    surface.blit(version_text, (SCREEN_WIDTH // 2 - version_text.get_width() // 2, SCREEN_HEIGHT - 28))
+
+def draw_controls_screen(surface, frame):
+    for y in range(SCREEN_HEIGHT):
+        ratio = y / SCREEN_HEIGHT
+        pygame.draw.line(surface, (int(15 + ratio * 15), int(25 + ratio * 20), int(45 + ratio * 30)), (0, y), (SCREEN_WIDTH, y))
+    
+    title = font_large.render("CONTROLES", True, GOLD)
+    surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 40))
+    
+    controls = [
+        ("W / A / S / D", "Mover la mira"),
+        ("ESPACIO", "Disparar"),
+        ("R", "Recargar"),
+        ("ESC", "Pausar / Menú"),
+    ]
+    
+    combos = [
+        ("A-W-S-D", "MODO DIOS (5s, 1/ronda)", GOLD),
+        ("D-S-A", "Munición infinita (5s)", (255, 180, 50)),
+        ("W-D-S", "Cámara lenta (5s)", (100, 150, 255)),
+        ("A-D-A-D", "Puntos dobles (10s)", (255, 100, 100)),
+    ]
+    
+    y = 100
+    for key, desc in controls:
+        pygame.draw.rect(surface, (50, 50, 70), (120, y, 160, 36), border_radius=6)
+        pygame.draw.rect(surface, (80, 80, 100), (120, y, 160, 36), 2, border_radius=6)
+        key_text = font_medium.render(key, True, WHITE)
+        surface.blit(key_text, (130, y + 5))
+        
+        desc_text = font_small.render(desc, True, (180, 180, 190))
+        surface.blit(desc_text, (310, y + 8))
+        y += 50
+    
+    pygame.draw.line(surface, (80, 80, 100), (80, y + 15), (SCREEN_WIDTH - 80, y + 15), 2)
+    
+    y += 35
+    combo_title = font_medium.render("COMBOS SECRETOS", True, (255, 180, 100))
+    surface.blit(combo_title, (SCREEN_WIDTH // 2 - combo_title.get_width() // 2, y))
+    y += 45
+    
+    for key, desc, color in combos:
+        pulse = int(math.sin(frame * 0.1 + combos.index((key, desc, color))) * 3)
+        pygame.draw.rect(surface, (40, 35, 50), (120, y - 2 + pulse, 160, 38), border_radius=6)
+        pygame.draw.rect(surface, color, (120, y - 2 + pulse, 160, 38), 2, border_radius=6)
+        
+        key_text = font_medium.render(key, True, color)
+        surface.blit(key_text, (130, y + 3 + pulse))
+        
+        desc_text = font_small.render(desc, True, (180, 180, 190))
+        surface.blit(desc_text, (300, y + 8))
+        y += 52
+    
+    y += 10
+    powerup_title = font_medium.render("POWER-UPS", True, (100, 200, 150))
+    surface.blit(powerup_title, (SCREEN_WIDTH // 2 - powerup_title.get_width() // 2, y))
+    y += 35
+    
+    powerups_info = [
+        ("Rayo", "Disparo rápido", GOLD),
+        ("Reloj", "Cámara lenta", (100, 150, 255)),
+        ("Balas", "Munición extra", (255, 180, 50)),
+        ("Estrella x2", "Puntos dobles", (255, 100, 100)),
+        ("Escudo", "Protección", (100, 200, 255)),
+        ("Imán", "Atrae power-ups", PURPLE)
+    ]
+    
+    col = 0
+    start_x = 100
+    for name, desc, color in powerups_info:
+        px = start_x + (col % 3) * 270
+        py = y + (col // 3) * 35
+        
+        pygame.draw.circle(surface, color, (px, py + 10), 8)
+        text = font_small.render(f"{name}: {desc}", True, (170, 170, 180))
+        surface.blit(text, (px + 18, py))
+        col += 1
+    
+    back_text = font_small.render("Presiona ESC para volver", True, (120, 120, 140))
+    surface.blit(back_text, (SCREEN_WIDTH // 2 - back_text.get_width() // 2, SCREEN_HEIGHT - 45))
+
+def draw_chapter_intro(surface, chapter, frame):
+    surface.fill((0, 0, 0))
+    
+    chapter_data = {
+        1: ("CAPÍTULO 1", "El Amanecer del Cazador", (135, 206, 250), "Aprende los controles básicos"),
+        2: ("CAPÍTULO 2", "La Tarde Dorada", (255, 150, 100), "Los patos son más rápidos"),
+        3: ("CAPÍTULO 3", "Cacería Nocturna", (50, 50, 100), "Visibilidad reducida"),
+        4: ("CAPÍTULO 4", "El Desafío Final", (30, 20, 60), "Pon a prueba tu habilidad"),
+    }
+    
+    title, subtitle, bg_color, hint = chapter_data.get(chapter, ("CAPÍTULO ?", "Desconocido", (50, 50, 50), ""))
+    
+    for y in range(SCREEN_HEIGHT):
+        ratio = y / SCREEN_HEIGHT
+        r = int(bg_color[0] * (1 - ratio * 0.7))
+        g = int(bg_color[1] * (1 - ratio * 0.7))
+        b = int(bg_color[2] * (1 - ratio * 0.7))
+        pygame.draw.line(surface, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+    
+    alpha = min(255, frame * 6)
+    
+    chapter_num_text = font_title.render(str(chapter), True, GOLD)
+    chapter_num_text.set_alpha(alpha)
+    surface.blit(chapter_num_text, (SCREEN_WIDTH // 2 - chapter_num_text.get_width() // 2, SCREEN_HEIGHT // 2 - 120))
+    
+    title_text = font_large.render(title, True, WHITE)
+    title_text.set_alpha(alpha)
+    surface.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, SCREEN_HEIGHT // 2 - 40))
+    
+    subtitle_text = font_medium.render(subtitle, True, (200, 200, 200))
+    subtitle_text.set_alpha(alpha)
+    surface.blit(subtitle_text, (SCREEN_WIDTH // 2 - subtitle_text.get_width() // 2, SCREEN_HEIGHT // 2 + 20))
+    
+    if frame > 30:
+        hint_alpha = min(255, (frame - 30) * 5)
+        hint_text = font_small.render(hint, True, (150, 150, 150))
+        hint_text.set_alpha(hint_alpha)
+        surface.blit(hint_text, (SCREEN_WIDTH // 2 - hint_text.get_width() // 2, SCREEN_HEIGHT // 2 + 70))
+    
+    if frame > 50:
+        pulse = int(128 + 127 * math.sin(frame * 0.12))
+        continue_text = font_small.render("Presiona ESPACIO para continuar", True, (pulse, pulse, pulse))
+        surface.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, SCREEN_HEIGHT - 80))
+
+def draw_story_intro(surface, frame, stage):
+    fade_in = min(255, frame * 6)
+    
+    if stage == 0:
+        for y in range(SCREEN_HEIGHT):
+            ratio = y / SCREEN_HEIGHT
+            wave = math.sin(y * 0.01 + frame * 0.02) * 5
+            r = int(min(255, 255 - ratio * 80 + wave))
+            g = int(min(255, 180 - ratio * 100 + wave * 0.5))
+            b = int(min(255, 130 - ratio * 60))
+            pygame.draw.line(surface, (max(0, r), max(0, g), max(0, b)), (0, y), (SCREEN_WIDTH, y))
+        
+        sun_x, sun_y = 700, 300
+        for i in range(5):
+            glow_size = 80 + i * 20
+            glow_alpha = 60 - i * 12
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (255, 200, 100, glow_alpha), (glow_size, glow_size), glow_size)
+            surface.blit(glow_surf, (sun_x - glow_size, sun_y - glow_size))
+        pygame.draw.circle(surface, (255, 220, 150), (sun_x, sun_y), 50)
+        pygame.draw.circle(surface, (255, 240, 200), (sun_x - 10, sun_y - 10), 20)
+        
+        for cx, cy, cs in [(150, 150, 1.2), (400, 100, 0.8), (650, 180, 1.0)]:
+            pygame.draw.ellipse(surface, (255, 220, 200), (cx, cy, int(80 * cs), int(30 * cs)))
+            pygame.draw.ellipse(surface, (255, 230, 210), (cx + int(20 * cs), cy - int(10 * cs), int(60 * cs), int(25 * cs)))
+        
+        house_x = 580
+        pygame.draw.rect(surface, (80, 50, 30), (house_x + 10, 365, 200, 145))
+        pygame.draw.rect(surface, (140, 95, 60), (house_x, 355, 200, 150))
+        for i in range(5):
+            pygame.draw.line(surface, (120, 75, 45), (house_x, 360 + i * 30), (house_x + 200, 360 + i * 30), 2)
+        pygame.draw.polygon(surface, (80, 50, 35), [(house_x - 25, 360), (house_x + 100, 275), (house_x + 225, 360)])
+        pygame.draw.polygon(surface, (100, 65, 45), [(house_x - 20, 355), (house_x + 100, 280), (house_x + 220, 355)])
+        pygame.draw.rect(surface, (70, 50, 35), (house_x + 75, 420, 55, 85))
+        pygame.draw.circle(surface, (200, 180, 100), (house_x + 115, 465), 5)
+        pygame.draw.rect(surface, (60, 50, 40), (house_x + 28, 378, 45, 40))
+        pygame.draw.rect(surface, (255, 240, 180), (house_x + 32, 382, 37, 32))
+        pygame.draw.rect(surface, (60, 50, 40), (house_x + 128, 378, 45, 40))
+        pygame.draw.rect(surface, (255, 240, 180), (house_x + 132, 382, 37, 32))
+        pygame.draw.line(surface, (60, 50, 40), (house_x + 50, 382), (house_x + 50, 414), 2)
+        pygame.draw.line(surface, (60, 50, 40), (house_x + 32, 398), (house_x + 69, 398), 2)
+        pygame.draw.line(surface, (60, 50, 40), (house_x + 150, 382), (house_x + 150, 414), 2)
+        pygame.draw.line(surface, (60, 50, 40), (house_x + 132, 398), (house_x + 169, 398), 2)
+        
+        pygame.draw.rect(surface, (70, 110, 55), (0, 505, SCREEN_WIDTH, 145))
+        for i in range(0, SCREEN_WIDTH, 20):
+            height = 8 + random.randint(0, 5)
+            pygame.draw.line(surface, (50, 90, 40), (i, 505), (i - 3, 505 - height), 2)
+            pygame.draw.line(surface, (60, 100, 45), (i + 10, 505), (i + 13, 505 - height + 2), 2)
+        
+        dog_x = 130 + int(math.sin(frame * 0.025) * 15)
+        dog_y = 430
+        pygame.draw.ellipse(surface, (50, 80, 40), (dog_x + 25, dog_y + 55, 75, 20))
+        pygame.draw.ellipse(surface, DOG_BROWN, (dog_x + 15, dog_y, 90, 55))
+        pygame.draw.ellipse(surface, DOG_BROWN, (dog_x + 25, dog_y - 35, 70, 50))
+        pygame.draw.ellipse(surface, DOG_LIGHT, (dog_x + 45, dog_y - 15, 45, 30))
+        pygame.draw.ellipse(surface, (40, 25, 20), (dog_x + 78, dog_y - 8, 14, 10))
+        pygame.draw.circle(surface, WHITE, (dog_x + 50, dog_y - 20), 8)
+        pygame.draw.circle(surface, WHITE, (dog_x + 70, dog_y - 20), 8)
+        pygame.draw.circle(surface, (60, 40, 30), (dog_x + 52, dog_y - 19), 5)
+        pygame.draw.circle(surface, (60, 40, 30), (dog_x + 72, dog_y - 19), 5)
+        pygame.draw.circle(surface, WHITE, (dog_x + 53, dog_y - 21), 2)
+        pygame.draw.circle(surface, WHITE, (dog_x + 73, dog_y - 21), 2)
+        pygame.draw.ellipse(surface, DOG_DARK, (dog_x + 20, dog_y - 55, 22, 40))
+        pygame.draw.ellipse(surface, DOG_DARK, (dog_x + 68, dog_y - 55, 22, 40))
+        pygame.draw.ellipse(surface, DOG_BROWN, (dog_x + 20, dog_y + 40, 25, 18))
+        pygame.draw.ellipse(surface, DOG_BROWN, (dog_x + 70, dog_y + 40, 25, 18))
+        tail_wave = math.sin(frame * 0.2) * 15
+        pygame.draw.ellipse(surface, DOG_BROWN, (dog_x - 5 + tail_wave, dog_y + 10, 30, 15))
+        
+        puppy_colors = [(DOG_BROWN, DOG_LIGHT), ((180, 140, 100), (220, 200, 170)), ((140, 90, 60), (180, 150, 120))]
+        for i in range(3):
+            px = dog_x + 140 + i * 60
+            py = 460 + int(math.sin(frame * 0.15 + i * 1.5) * 8)
+            main_c, light_c = puppy_colors[i]
+            pygame.draw.ellipse(surface, (50, 80, 40), (px + 5, py + 28, 40, 12))
+            pygame.draw.ellipse(surface, main_c, (px, py, 50, 30))
+            pygame.draw.ellipse(surface, main_c, (px + 8, py - 20, 38, 28))
+            pygame.draw.ellipse(surface, light_c, (px + 22, py - 10, 22, 15))
+            pygame.draw.circle(surface, (40, 25, 20), (px + 38, py - 5), 4)
+            pygame.draw.circle(surface, BLACK, (px + 22, py - 12), 4)
+            pygame.draw.circle(surface, BLACK, (px + 34, py - 12), 4)
+            pygame.draw.circle(surface, WHITE, (px + 23, py - 13), 1)
+            pygame.draw.circle(surface, WHITE, (px + 35, py - 13), 1)
+            pygame.draw.ellipse(surface, main_c, (px + 5, py - 28, 14, 20))
+            pygame.draw.ellipse(surface, main_c, (px + 30, py - 28, 14, 20))
+        
+        for i in range(3):
+            hx = 200 + i * 80 + int(math.sin(frame * 0.05 + i) * 10)
+            hy = 380 - int(frame * 0.3) % 100 + i * 20
+            if hy > 280:
+                size = 8 + int(math.sin(frame * 0.1 + i) * 2)
+                pygame.draw.circle(surface, (255, 150, 150), (hx - 4, hy), size // 2)
+                pygame.draw.circle(surface, (255, 150, 150), (hx + 4, hy), size // 2)
+                pygame.draw.polygon(surface, (255, 150, 150), [(hx - 8, hy + 2), (hx, hy + 12), (hx + 8, hy + 2)])
+        
+        panel_y = 60
+        panel_surf = pygame.Surface((500, 100), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (0, 0, 0, 120), (0, 0, 500, 100), border_radius=15)
+        surface.blit(panel_surf, (SCREEN_WIDTH // 2 - 250, panel_y))
+        
+        alpha = min(255, frame * 5)
+        text1 = font_large.render("La Familia de Hunter", True, GOLD)
+        text1.set_alpha(alpha)
+        surface.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, panel_y + 15))
+        
+        if frame > 50:
+            alpha2 = min(255, (frame - 50) * 5)
+            text2 = font_medium.render("Un padre dedicado a sus cachorros", True, WHITE)
+            text2.set_alpha(alpha2)
+            surface.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, panel_y + 55))
+    
+    elif stage == 1:
+        for y in range(SCREEN_HEIGHT):
+            ratio = y / SCREEN_HEIGHT
+            pulse = math.sin(frame * 0.02 + y * 0.005) * 3
+            r = int(30 + ratio * 15 + pulse)
+            g = int(35 + ratio * 20 + pulse)
+            b = int(55 + ratio * 35 + pulse)
+            pygame.draw.line(surface, (max(0, r), max(0, g), max(0, b)), (0, y), (SCREEN_WIDTH, y))
+        
+        for i in range(30):
+            rx = (i * 37 + frame * 4) % SCREEN_WIDTH
+            ry = (i * 23 + frame * 6) % (SCREEN_HEIGHT - 150)
+            pygame.draw.line(surface, (100, 110, 140, 100), (rx, ry), (rx - 1, ry + 12), 1)
+        
+        pygame.draw.rect(surface, (40, 35, 30), (0, 300, SCREEN_WIDTH, 350))
+        
+        for px, py in [(280, 420), (520, 420)]:
+            pygame.draw.ellipse(surface, (30, 25, 22), (px + 5, py + 5, 100, 28))
+            pygame.draw.ellipse(surface, (80, 75, 70), (px, py, 100, 28))
+            pygame.draw.ellipse(surface, (100, 95, 90), (px + 10, py + 5, 80, 18))
+            pygame.draw.arc(surface, (120, 115, 110), (px + 20, py + 8, 60, 10), 0, 3.14, 2)
+        
+        for i in range(3):
+            px = 250 + i * 130
+            py = 350
+            bounce = int(math.sin(frame * 0.03 + i) * 3)
+            
+            pygame.draw.ellipse(surface, (25, 22, 18), (px + 5, py + 50, 55, 15))
+            pygame.draw.ellipse(surface, DOG_BROWN, (px, py + 15 + bounce, 60, 35))
+            pygame.draw.ellipse(surface, DOG_BROWN, (px + 12, py - 10 + bounce, 45, 35))
+            pygame.draw.ellipse(surface, DOG_LIGHT, (px + 30, py + 5 + bounce, 25, 18))
+            pygame.draw.circle(surface, (40, 25, 20), (px + 48, py + 10 + bounce), 4)
+            pygame.draw.ellipse(surface, BLACK, (px + 24, py - 2 + bounce, 8, 5))
+            pygame.draw.ellipse(surface, BLACK, (px + 38, py - 2 + bounce, 8, 5))
+            pygame.draw.line(surface, (80, 50, 35), (px + 22, py - 8 + bounce), (px + 30, py - 5 + bounce), 2)
+            pygame.draw.line(surface, (80, 50, 35), (px + 48, py - 5 + bounce), (px + 40, py - 8 + bounce), 2)
+            pygame.draw.ellipse(surface, DOG_DARK, (px + 10, py - 5 + bounce, 15, 25))
+            pygame.draw.ellipse(surface, DOG_DARK, (px + 40, py - 5 + bounce, 15, 25))
+            tear_y = py + 8 + bounce + (frame % 40) * 0.5
+            if tear_y < py + 30:
+                pygame.draw.circle(surface, (150, 180, 220), (px + 28, int(tear_y)), 2)
+        
+        panel_y = 80
+        panel_surf = pygame.Surface((550, 130), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (0, 0, 0, 150), (0, 0, 550, 130), border_radius=15)
+        surface.blit(panel_surf, (SCREEN_WIDTH // 2 - 275, panel_y))
+        
+        alpha = min(255, frame * 5)
+        text1 = font_large.render("Los tiempos son difíciles...", True, (200, 180, 160))
+        text1.set_alpha(alpha)
+        surface.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, panel_y + 20))
+        
+        if frame > 50:
+            alpha2 = min(255, (frame - 50) * 5)
+            text2 = font_medium.render("La familia necesita comida", True, (180, 170, 160))
+            text2.set_alpha(alpha2)
+            surface.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, panel_y + 65))
+        
+        if frame > 80:
+            alpha3 = min(255, (frame - 80) * 5)
+            text3 = font_small.render("Los platos están vacíos...", True, (150, 140, 130))
+            text3.set_alpha(alpha3)
+            surface.blit(text3, (SCREEN_WIDTH // 2 - text3.get_width() // 2, panel_y + 100))
+    
+    elif stage == 2:
+        for y in range(SCREEN_HEIGHT):
+            ratio = y / SCREEN_HEIGHT
+            if y < SCREEN_HEIGHT * 0.6:
+                r = int(80 + (1 - ratio) * 100 + math.sin(frame * 0.02) * 10)
+                g = int(60 + (1 - ratio) * 80)
+                b = int(100 + (1 - ratio) * 60)
+            else:
+                r = int(40 + ratio * 20)
+                g = int(60 + ratio * 30)
+                b = int(50 + ratio * 25)
+            pygame.draw.line(surface, (max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))), (0, y), (SCREEN_WIDTH, y))
+        
+        sun_y = 350 - int(frame * 0.3)
+        if sun_y > 250:
+            sun_y = max(250, sun_y)
+        for i in range(12):
+            angle = math.radians(i * 30 + frame * 0.5)
+            length = 200 + math.sin(frame * 0.1 + i) * 30
+            end_x = SCREEN_WIDTH // 2 + int(length * math.cos(angle))
+            end_y = sun_y + int(length * math.sin(angle))
+            for w in range(3):
+                pygame.draw.line(surface, (255, 220, 150, 50 - w * 15), (SCREEN_WIDTH // 2, sun_y), (end_x, end_y), 4 - w)
+        for i in range(4):
+            glow_size = 80 + i * 25
+            glow_surf = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (255, 220, 150, 50 - i * 12), (glow_size, glow_size), glow_size)
+            surface.blit(glow_surf, (SCREEN_WIDTH // 2 - glow_size, sun_y - glow_size))
+        pygame.draw.circle(surface, (255, 230, 180), (SCREEN_WIDTH // 2, sun_y), 55)
+        pygame.draw.circle(surface, (255, 245, 220), (SCREEN_WIDTH // 2 - 15, sun_y - 15), 25)
+        
+        for hx, hw, hh in [(0, 400, 120), (300, 350, 100), (550, 400, 140)]:
+            pygame.draw.ellipse(surface, (40, 55, 45), (hx, SCREEN_HEIGHT - hh - 30, hw, hh))
+        
+        pygame.draw.rect(surface, (45, 65, 50), (0, 490, SCREEN_WIDTH, 160))
+        
+        dog_x = 180
+        dog_y = 400
+        silhouette_color = (25, 30, 35)
+        
+        pygame.draw.ellipse(surface, (30, 40, 35), (dog_x + 20, dog_y + 100, 150, 25))
+        pygame.draw.ellipse(surface, silhouette_color, (dog_x + 10, dog_y + 35, 110, 70))
+        pygame.draw.ellipse(surface, silhouette_color, (dog_x + 30, dog_y - 25, 80, 70))
+        pygame.draw.ellipse(surface, silhouette_color, (dog_x + 80, dog_y + 5, 50, 30))
+        pygame.draw.ellipse(surface, silhouette_color, (dog_x + 30, dog_y - 50, 25, 45))
+        pygame.draw.ellipse(surface, silhouette_color, (dog_x + 70, dog_y - 50, 25, 45))
+        pygame.draw.rect(surface, silhouette_color, (dog_x + 25, dog_y + 85, 25, 35))
+        pygame.draw.rect(surface, silhouette_color, (dog_x + 80, dog_y + 85, 25, 35))
+        pygame.draw.circle(surface, (255, 220, 180), (dog_x + 95, dog_y + 5), 4)
+        
+        for i in range(4):
+            px = 550 + i * 60 + int(math.sin(frame * 0.1 + i) * 10)
+            py = 200 + i * 25 + int(math.cos(frame * 0.08 + i) * 8)
+            wing = int(math.sin(frame * 0.3 + i) * 5)
+            pygame.draw.ellipse(surface, (60, 70, 80), (px, py, 20, 10))
+            pygame.draw.line(surface, (60, 70, 80), (px + 5, py + 5), (px - 5, py - wing), 2)
+            pygame.draw.line(surface, (60, 70, 80), (px + 15, py + 5), (px + 25, py - wing), 2)
+        
+        panel_y = 50
+        panel_surf = pygame.Surface((600, 160), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (0, 0, 0, 140), (0, 0, 600, 160), border_radius=15)
+        surface.blit(panel_surf, (SCREEN_WIDTH // 2 - 300, panel_y))
+        
+        alpha = min(255, frame * 5)
+        text1 = font_large.render("Hunter toma una decisión", True, GOLD)
+        text1.set_alpha(alpha)
+        surface.blit(text1, (SCREEN_WIDTH // 2 - text1.get_width() // 2, panel_y + 15))
+        
+        if frame > 50:
+            alpha2 = min(255, (frame - 50) * 5)
+            text2 = font_medium.render("Cazará patos para alimentar a su familia", True, WHITE)
+            text2.set_alpha(alpha2)
+            surface.blit(text2, (SCREEN_WIDTH // 2 - text2.get_width() // 2, panel_y + 60))
+        
+        if frame > 90:
+            alpha3 = min(255, (frame - 90) * 5)
+            text3 = font_small.render("Así comienza la leyenda del mejor cazador...", True, (200, 200, 200))
+            text3.set_alpha(alpha3)
+            surface.blit(text3, (SCREEN_WIDTH // 2 - text3.get_width() // 2, panel_y + 100))
+        
+        if frame > 120:
+            alpha4 = min(255, (frame - 120) * 5)
+            text4 = font_small.render("Por su familia, por su honor", True, (255, 200, 150))
+            text4.set_alpha(alpha4)
+            surface.blit(text4, (SCREEN_WIDTH // 2 - text4.get_width() // 2, panel_y + 130))
+    
+    if frame > 90:
+        pulse = int(128 + 127 * math.sin(frame * 0.12))
+        btn_surf = pygame.Surface((300, 40), pygame.SRCALPHA)
+        pygame.draw.rect(btn_surf, (255, 255, 255, 30), (0, 0, 300, 40), border_radius=20)
+        surface.blit(btn_surf, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT - 70))
+        
+        continue_text = font_small.render("ESPACIO para continuar", True, (pulse, pulse, pulse))
+        surface.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, SCREEN_HEIGHT - 60))
+
+def draw_boss_presentation(surface, frame, current_boss_index, shaker):
+    surface.fill((0, 0, 0))
+    
+    for y in range(SCREEN_HEIGHT):
+        ratio = y / SCREEN_HEIGHT
+        pulse = math.sin(frame * 0.02 + y * 0.01) * 15
+        r = int(60 + ratio * 40 + pulse)
+        g = int(15 + ratio * 10)
+        b = int(10 + ratio * 5)
+        pygame.draw.line(surface, (min(255, max(0, r)), g, b), (0, y), (SCREEN_WIDTH, y))
+    
+    if current_boss_index < len(SECRET_BOSSES):
+        boss = SECRET_BOSSES[current_boss_index]
+        
+        level_text = font_medium.render(f"NIVEL {current_boss_index + 1}", True, GOLD)
+        surface.blit(level_text, (SCREEN_WIDTH // 2 - level_text.get_width() // 2, 100))
+        
+        boss_name = font_title.render(boss["name"], True, boss["color"])
+        glow_color = (min(255, boss["color"][0] + 50), 
+                     min(255, boss["color"][1] + 50), 
+                     min(255, boss["color"][2] + 50))
+        
+        for i in range(3):
+            glow_text = font_title.render(boss["name"], True, glow_color)
+            glow_text.set_alpha(30 - i * 10)
+            surface.blit(glow_text, 
+                      (SCREEN_WIDTH // 2 - glow_text.get_width() // 2 - i, 
+                       180 - i))
+            surface.blit(glow_text, 
+                      (SCREEN_WIDTH // 2 - glow_text.get_width() // 2 + i, 
+                       180 + i))
+        
+        surface.blit(boss_name, (SCREEN_WIDTH // 2 - boss_name.get_width() // 2, 180))
+        
+        desc_text = font_medium.render(boss["description"], True, WHITE)
+        surface.blit(desc_text, (SCREEN_WIDTH // 2 - desc_text.get_width() // 2, 260))
+        
+        stats_y = 320
+        pygame.draw.rect(surface, (30, 15, 10), 
+                       (SCREEN_WIDTH // 2 - 150, stats_y, 300, 120), 
+                       border_radius=10)
+        pygame.draw.rect(surface, (80, 30, 20), 
+                       (SCREEN_WIDTH // 2 - 150, stats_y, 300, 120), 
+                       2, border_radius=10)
+        
+        life_text = font_small.render(f"VIDA: {boss['health']} golpes", True, GREEN)
+        surface.blit(life_text, (SCREEN_WIDTH // 2 - life_text.get_width() // 2, stats_y + 20))
+        
+        points_text = font_small.render(f"PUNTOS: {boss['points']:,}", True, GOLD)
+        surface.blit(points_text, (SCREEN_WIDTH // 2 - points_text.get_width() // 2, stats_y + 50))
+        
+        difficulty_text = font_small.render("DIFICULTAD: " + "★" * (current_boss_index + 1), True, RED)
+        surface.blit(difficulty_text, (SCREEN_WIDTH // 2 - difficulty_text.get_width() // 2, stats_y + 80))
+        
+        boss_x = SCREEN_WIDTH // 2
+        boss_y = 450
+        scale = 1.5
+        
+        pygame.draw.ellipse(surface, boss["color"], 
+                          (boss_x - int(42 * scale) // 2, boss_y, 
+                           int(42 * scale), int(26 * scale)))
+        pygame.draw.circle(surface, 
+                         (max(0, boss["color"][0] - 40), 
+                          max(0, boss["color"][1] - 40), 
+                          max(0, boss["color"][2] - 40)), 
+                         (boss_x + int(14 * scale), boss_y - int(10 * scale)), 
+                         int(14 * scale))
+        wing_offset = int(math.sin(frame * 0.2) * 10)
+        pygame.draw.ellipse(surface, boss["color"], 
+                          (boss_x - int(20 * scale), boss_y + wing_offset, 
+                           int(26 * scale), int(14 * scale)))
+        
+        if frame > 80:
+            pulse = int(128 + 127 * math.sin(frame * 0.12))
+            if current_boss_index < len(SECRET_BOSSES) - 1:
+                continue_text = font_small.render("ESPACIO para siguiente boss", True, (pulse, pulse // 2, 0))
+            else:
+                continue_text = font_small.render("ESPACIO para comenzar", True, (pulse, pulse // 2, 0))
+            surface.blit(continue_text, (SCREEN_WIDTH // 2 - continue_text.get_width() // 2, SCREEN_HEIGHT - 80))
+
+# ============ FUNCIÓN PRINCIPAL COMPLETA ============
+def main():
+    running = True
+    game_state = 'intro'
+    menu_selection = 0
+    intro_frame = 0
+    chapter_frame = 0
+    game_frame = 0
+    
+    # Variables de juego
+    score = 0
+    high_score = 0
+    ammo = 3
+    round_num = 1
+    chapter = 1
+    ducks_per_round = 5
+    ducks_hit = 0
+    ducks_spawned = 0
+    
+    cursor_x = SCREEN_WIDTH // 2
+    cursor_y = SCREEN_HEIGHT // 2
+    
+    # Combo system
+    combo_keys = []
+    combo_timer = 0
+    combo_display = ""
+    
+    # Power-ups
+    active_powerups = {
+        'rapid_fire': 0,
+        'slow_motion': 0,
+        'extra_ammo': 0,
+        'double_points': 0,
+        'shield': 0,
+        'magnet': 0
+    }
+    powerups = []
+    
+    # Visual effects
+    particles = []
+    floating_texts = []
+    screen_shaker = ScreenShaker()
+    
+    # Environment
+    clouds = [Cloud(start_random=True) for _ in range(7)]
+    stars = [Star() for _ in range(50)]
+    ducks = []
+    dog = Dog()
+    time_of_day = 'day'
+    
+    # Sound systems
+    ambient_sound = AmbientSound()
+    ambient_sound.play_menu()
+    
+    # QTE system
+    qte_system = QTESystem()
+    
+    # Dialogue system
+    dialogue_system = DialogueSystem(ambient_sound)
+    
+    # Secret mode variables
+    secret_mode = False
+    secret_mode_unlocked = False
+    showing_unlock_animation = False
+    unlock_animation_frame = 0
+    
+    # Boss presentation
+    current_boss_index = 0
+    boss_intro_frame = 0
+    
+    # Difficulty
+    difficulty_level = 1
+    qte_time_based = False
+    last_qte_time = 0
+    
+    # Story intro
+    story_intro_stage = 0
+    
+    # Secret intro
+    secret_intro_stage = 0
+    
+    pygame.mouse.set_visible(False)
+    
+    while running:
+        # Actualizar shaker
+        screen_shaker.update()
+        shaker_offset = screen_shaker.get_offset()
+        
+        keys_pressed = pygame.key.get_pressed()
+        
+        # Cursor movement
+        if game_state == 'playing':
+            if keys_pressed[pygame.K_w]:
+                cursor_y -= CURSOR_SPEED
+            if keys_pressed[pygame.K_s]:
+                cursor_y += CURSOR_SPEED
+            if keys_pressed[pygame.K_a]:
+                cursor_x -= CURSOR_SPEED
+            if keys_pressed[pygame.K_d]:
+                cursor_x += CURSOR_SPEED
+            
+            cursor_x = max(20, min(cursor_x, SCREEN_WIDTH - 20))
+            cursor_y = max(HUD_HEIGHT + 20, min(cursor_y, SCREEN_HEIGHT - 70))
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            if event.type == pygame.KEYDOWN:
+                # QTE check
+                if qte_system.active:
+                    qte_system.check_key(event.key)
+                    continue
+                
+                if game_state == 'intro':
+                    max_options = 3 if not secret_mode_unlocked else 4
+                    if event.key == pygame.K_w:
+                        menu_selection = (menu_selection - 1) % max_options
+                    elif event.key == pygame.K_s:
+                        menu_selection = (menu_selection + 1) % max_options
+                    elif event.key == pygame.K_SPACE:
+                        if menu_selection == 0:  # Story Mode
+                            game_state = 'story_intro'
+                            story_intro_stage = 0
+                            chapter_frame = 0
+                            score = 0
+                            round_num = 1
+                            ducks_hit = 0
+                            ducks_spawned = 0
+                            secret_mode = False
+                            ambient_sound.stop()
+                        elif menu_selection == 1:  # Arcade Mode
+                            game_state = 'playing'
+                            chapter = 0
+                            time_of_day = 'day'
+                            ducks = [Duck()]
+                            ducks_spawned = 1
+                            ducks_hit = 0
+                            round_num = 1
+                            score = 0
+                            ammo = 3
+                            secret_mode = False
+                            dog.reset_round()
+                            ambient_sound.stop()
+                        elif menu_selection == 2:  # Controls
+                            game_state = 'controls'
+                        elif menu_selection == 3 and secret_mode_unlocked:  # Secret Mode
+                            game_state = 'secret_intro'
+                            secret_intro_stage = 0
+                            chapter_frame = 0
+                            score = 0
+                            round_num = 1
+                            ducks_hit = 0
+                            ducks_spawned = 0
+                            secret_mode = True
+                            difficulty_level = 1
+                            particles = []
+                            ambient_sound.play_tension()
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+                
+                elif game_state == 'controls':
+                    if event.key == pygame.K_ESCAPE:
+                        game_state = 'intro'
+                
+                elif game_state == 'story_intro':
+                    if event.key == pygame.K_SPACE and chapter_frame > 90:
+                        story_intro_stage += 1
+                        chapter_frame = 0
+                        if story_intro_stage > 2:
+                            game_state = 'chapter_intro'
+                            chapter = 1
+                            chapter_frame = 0
+                
+                elif game_state == 'secret_intro':
+                    if event.key == pygame.K_SPACE and chapter_frame > 90:
+                        secret_intro_stage += 1
+                        chapter_frame = 0
+                        if secret_intro_stage > 2:
+                            # Iniciar presentación de bosses
+                            current_boss_index = 0
+                            boss_intro_frame = 0
+                            game_state = 'boss_presentation'  # <-- ESTADO NUEVO
+                            ambient_sound.play('boss')
+                
+                elif game_state == 'boss_presentation':  # <-- NUEVO ESTADO
+                    if event.key == pygame.K_SPACE and boss_intro_frame > 120:
+                        if current_boss_index < len(SECRET_BOSSES) - 1:
+                            current_boss_index += 1
+                            boss_intro_frame = 0
+                            ambient_sound.play('boss')
+                            screen_shaker.shake(15, 30)
+                        else:
+                            # Comenzar juego secreto
+                            game_state = 'playing'
+                            time_of_day = 'hell'
+                            round_num = 1
+                            required_score = SECRET_MODE_REQUIREMENTS.get(round_num, 300)
+                            ducks = [Duck(difficulty=3, is_boss=True, boss_data=SECRET_BOSSES[0])]
+                            ducks_spawned = 1
+                            ducks_hit = 0
+                            ammo = 6  # Más munición para modo difícil
+                            dog.reset_round()
+                            ambient_sound.play_tension()
+                            dialogue_system.add_boss_intro(0)
+                
+                elif game_state == 'chapter_intro':
+                    if event.key == pygame.K_SPACE and chapter_frame > 50:
+                        game_state = 'playing'
+                        times = {1: 'day', 2: 'sunset', 3: 'night', 4: 'night'}
+                        time_of_day = times.get(chapter, 'day')
+                        ducks = [Duck(difficulty=chapter)]
+                        ducks_spawned = 1
+                        ducks_hit = 0
+                        ammo = 3
+                        particles = []
+                        floating_texts = []
+                        dog.reset_round()
+                
+                elif game_state == 'playing':
+                    # Combo detection
+                    key_map = {pygame.K_w: 'W', pygame.K_a: 'A', pygame.K_s: 'S', pygame.K_d: 'D'}
+                    if event.key in key_map:
+                        combo_keys.append(key_map[event.key])
+                        combo_timer = 90
+                        
+                        if len(combo_keys) > 8:
+                            combo_keys = combo_keys[-8:]
+                        
+                        combo_str = ''.join(combo_keys)
+                        combo_display = combo_str
+                        
+                        # Check combos
+                        if combo_str.endswith('AWSD'):
+                            if dog.activate_god_mode():
+                                combo_keys = []
+                                combo_display = ""
+                                floating_texts.append(FloatingText(SCREEN_WIDTH // 2, 200, "¡MODO DIOS!", GOLD))
+                                screen_shaker.shake(5, 20)
+                        elif combo_str.endswith('DSA'):
+                            active_powerups['extra_ammo'] = 300
+                            ammo = 99
+                            combo_keys = []
+                            combo_display = ""
+                        elif combo_str.endswith('WDS'):
+                            active_powerups['slow_motion'] = 300
+                            combo_keys = []
+                            combo_display = ""
+                        elif combo_str.endswith('ADAD'):
+                            active_powerups['double_points'] = 600
+                            combo_keys = []
+                            combo_display = ""
+                        
+                        # Combo secreto para desbloquear modo secreto
+                        if not secret_mode_unlocked and combo_str.endswith('WSADWSAD'):
+                            secret_mode_unlocked = True
+                            showing_unlock_animation = True
+                            unlock_animation_frame = 0
+                            combo_keys = []
+                            combo_display = ""
+                            ambient_sound.play('unlock')
+                            screen_shaker.shake(20, 40)
+                    
+                    # Shoot
+                    if event.key == pygame.K_SPACE and ammo > 0 and not showing_unlock_animation:
+                        if active_powerups['extra_ammo'] <= 0:
+                            ammo -= 1
+                        
+                        ambient_sound.play('shoot')
+                        screen_shaker.shake(3, 10)
+                        
+                        for _ in range(8):
+                            angle = random.uniform(0, math.pi * 2)
+                            dist = random.uniform(10, 25)
+                            px = cursor_x + math.cos(angle) * dist
+                            py = cursor_y + math.sin(angle) * dist
+                            particles.append(Particle(px, py, 'spark'))
+                        
+                        hit = False
+                        for duck in ducks:
+                            result = duck.check_hit(cursor_x, cursor_y)
+                            if result == True:
+                                points = duck.points
+                                if active_powerups['double_points'] > 0:
+                                    points *= 2
+                                score += points
+                                ducks_hit += 1
+                                hit = True
+                                
+                                for _ in range(15):
+                                    particles.append(Particle(
+                                        duck.x + DUCK_WIDTH // 2,
+                                        duck.y + DUCK_HEIGHT // 2,
+                                        'feather' if not duck.is_boss else 'blood'
+                                    ))
+                                
+                                floating_texts.append(FloatingText(
+                                    duck.x + DUCK_WIDTH // 2,
+                                    duck.y,
+                                    f"+{points}",
+                                    GOLD if not duck.is_boss else RED
+                                ))
+                                
+                                if duck.is_boss:
+                                    screen_shaker.shake(15, 25)
+                                    ambient_sound.play('thunder')
+                                    for _ in range(20):
+                                        particles.append(Particle(
+                                            duck.x + DUCK_WIDTH // 2,
+                                            duck.y + DUCK_HEIGHT // 2,
+                                            'magic',
+                                            duck.aura_color
+                                        ))
+                                else:
+                                    dog.show_celebrate(duck.x, duck.color_variant)
+                                    ambient_sound.play('hit')
+                                    ambient_sound.play('bark')
+                                
+                                break
+                            elif result == 'damaged':
+                                hit = True
+                                screen_shaker.shake(8, 15)
+                                ambient_sound.play('hit')
+                                floating_texts.append(FloatingText(
+                                    duck.x + DUCK_WIDTH // 2,
+                                    duck.y,
+                                    "¡HIT!",
+                                    RED
+                                ))
+                                for _ in range(10):
+                                    particles.append(Particle(
+                                        duck.x + DUCK_WIDTH // 2,
+                                        duck.y + DUCK_HEIGHT // 2,
+                                        'spark',
+                                        duck.aura_color
+                                    ))
+                                break
+                        
+                        magnet_active = active_powerups['magnet'] > 0
+                        for powerup in powerups[:]:
+                            ptype = powerup.check_collect(cursor_x, cursor_y, magnet_active)
+                            if ptype:
+                                if ptype == 'rapid_fire':
+                                    active_powerups['rapid_fire'] = 300
+                                elif ptype == 'slow_motion':
+                                    active_powerups['slow_motion'] = 300
+                                elif ptype == 'extra_ammo':
+                                    ammo = min(ammo + 5, 99)
+                                elif ptype == 'double_points':
+                                    active_powerups['double_points'] = 600
+                                elif ptype == 'shield':
+                                    active_powerups['shield'] = 300
+                                elif ptype == 'magnet':
+                                    active_powerups['magnet'] = 300
+                                
+                                for _ in range(12):
+                                    particles.append(Particle(powerup.x, powerup.y, 'star'))
+                                powerups.remove(powerup)
+                        
+                        if not hit and ammo == 0:
+                            dog.show_laugh()
+                    
+                    # Reload
+                    if event.key == pygame.K_r:
+                        if active_powerups['extra_ammo'] <= 0:
+                            ammo = 3
+                        else:
+                            ammo = 99
+                        floating_texts.append(FloatingText(cursor_x, cursor_y, "¡RECARGADO!", GREEN))
+                    
+                    # Pause
+                    if event.key == pygame.K_ESCAPE:
+                        if score > high_score:
+                            high_score = score
+                        game_state = 'intro'
+                        ambient_sound.play_menu()
+                
+                elif game_state == 'round_end':
+                    if event.key == pygame.K_SPACE:
+                        round_num += 1
+                        dog.reset_round()
+                        
+                        if secret_mode:
+                            required_score = SECRET_MODE_REQUIREMENTS.get(round_num, required_score + 500)
+                            if round_num > 5:
+                                game_state = 'victory'
+                                ambient_sound.play('victory')
+                            else:
+                                ducks_hit = 0
+                                ducks_spawned = 1
+                                ammo = 6
+                                boss_index = min(round_num - 1, len(SECRET_BOSSES) - 1)
+                                ducks = [Duck(difficulty=3 + round_num, is_boss=True, boss_data=SECRET_BOSSES[boss_index])]
+                                game_state = 'playing'
+                                dialogue_system.add_boss_intro(boss_index)
+                        else:
+                            ducks_hit = 0
+                            ducks_spawned = 1
+                            ammo = 3
+                            difficulty = chapter if chapter > 0 else 1 + round_num * 0.2
+                            ducks = [Duck(difficulty=difficulty)]
+                            game_state = 'playing'
+                
+                elif game_state in ['game_over', 'victory']:
+                    if event.key == pygame.K_SPACE:
+                        if score > high_score:
+                            high_score = score
+                        game_state = 'intro'
+                        ambient_sound.play_menu()
+        
+        # Update logic
+        if game_state == 'intro':
+            intro_frame += 1
+        
+        elif game_state == 'controls':
+            intro_frame += 1
+        
+        elif game_state == 'story_intro':
+            chapter_frame += 1
+        
+        elif game_state == 'secret_intro':
+            chapter_frame += 1
+        
+        elif game_state == 'boss_presentation':  # <-- NUEVO ESTADO
+            boss_intro_frame += 1
+            
+            if boss_intro_frame % 30 == 0:
+                screen_shaker.shake(5, 10)
+            
+            if boss_intro_frame % 45 == 0:
+                ambient_sound.play('thunder')
+                for _ in range(10):
+                    particles.append(Particle(
+                        random.randint(100, SCREEN_WIDTH - 100),
+                        random.randint(50, 200),
+                        'lightning'
+                    ))
+        
+        elif game_state == 'chapter_intro':
+            chapter_frame += 1
+        
+        elif game_state == 'playing':
+            game_frame += 1
+            
+            dialogue_effect = dialogue_system.update()
+            if dialogue_effect == "shake":
+                screen_shaker.shake(10, 20)
+            elif dialogue_effect == "boss_appear":
+                screen_shaker.shake(20, 30)
+                ambient_sound.play('thunder')
+            
+            if combo_timer > 0:
+                combo_timer -= 1
+            else:
+                combo_keys = []
+                combo_display = ""
+            
+            slow_motion = active_powerups['slow_motion'] > 0
+            for key in active_powerups:
+                if active_powerups[key] > 0:
+                    active_powerups[key] -= 1
+            
+            if secret_mode and not qte_system.active:
+                current_time = pygame.time.get_ticks()
+                time_since_last_qte = current_time - last_qte_time
+                
+                qte_chance = 0.001 * difficulty_level
+                if time_since_last_qte > 10000:
+                    qte_chance *= 2
+                
+                if random.random() < qte_chance:
+                    qte_time_based = not qte_time_based
+                    qte_difficulty = min(5, difficulty_level + round_num // 2)
+                    qte_system.start_qte(qte_difficulty, qte_time_based)
+                    last_qte_time = current_time
+            
+            qte_result = qte_system.update()
+            if qte_result is not None:
+                score = max(0, score + qte_result)
+                if qte_result > 0:
+                    floating_texts.append(FloatingText(SCREEN_WIDTH // 2, 250, f"+{qte_result} QTE BONUS!", NEON_GREEN))
+                    screen_shaker.shake(5, 15)
+                else:
+                    floating_texts.append(FloatingText(SCREEN_WIDTH // 2, 250, f"{qte_result} QTE FAIL!", RED))
+                    screen_shaker.shake(10, 25)
+            
+            if random.random() < 0.004 and len(powerups) < 4:
+                powerups.append(PowerUp())
+            
+            powerups = [p for p in powerups if p.update()]
+            particles = [p for p in particles if p.update()]
+            floating_texts = [t for t in floating_texts if t.update()]
+            
+            for duck in ducks[:]:
+                result = duck.update(slow_motion)
+                if result == "earthquake":
+                    screen_shaker.shake(20, 40)
+                    ambient_sound.play('thunder')
+                elif not result:
+                    ducks.remove(duck)
+            
+            god_points = dog.update(ducks)
+            if god_points > 0:
+                if active_powerups['double_points'] > 0:
+                    god_points *= 2
+                score += god_points
+                ducks_hit += 1
+                floating_texts.append(FloatingText(dog.x + DOG_WIDTH // 2, dog.y - 20, f"+{god_points}", GOLD))
+                screen_shaker.shake(5, 15)
+            
+            for cloud in clouds:
+                cloud.update(slow_motion)
+            
+            if slow_motion:
+                for star in stars:
+                    star.update()
+            
+            ducks_to_hit = ducks_per_round
+            
+            if ducks_hit >= ducks_to_hit:
+                if secret_mode:
+                    required_score = SECRET_MODE_REQUIREMENTS.get(round_num, 300)
+                    if score >= required_score:
+                        if round_num < 5:
+                            game_state = 'round_end'
+                            ambient_sound.play('victory')
+                        else:
+                            game_state = 'victory'
+                            ambient_sound.play('victory')
+                    else:
+                        game_state = 'game_over'
+                        ambient_sound.stop()
+                        ambient_sound.play('sad')
+                else:
+                    if ducks_spawned >= ducks_to_hit and not ducks:
+                        if chapter < 4:
+                            round_num += 1
+                            if round_num > 3:
+                                chapter += 1
+                                round_num = 1
+                                ducks_per_round = 8 if chapter == 4 else 5
+                                game_state = 'chapter_intro'
+                                chapter_frame = 0
+                                if score > high_score:
+                                    high_score = score
+                            else:
+                                ducks = [Duck(difficulty=chapter)]
+                                ducks_spawned = 1
+                                ducks_hit = 0
+                                ammo = 3
+                                dog.reset_round()
+                        else:
+                            if ducks_hit >= ducks_to_hit:
+                                game_state = 'victory'
+                                ambient_sound.play('victory')
+                            else:
+                                game_state = 'game_over'
+                                ambient_sound.stop()
+                                ambient_sound.play('sad')
+            else:
+                if not ducks and ducks_spawned < ducks_to_hit:
+                    if secret_mode and round_num > 1:
+                        time.sleep(0.5)
+                        boss_index = min(round_num - 1, len(SECRET_BOSSES) - 1)
+                        ducks.append(Duck(difficulty=3 + round_num, is_boss=True, boss_data=SECRET_BOSSES[boss_index]))
+                    else:
+                        ducks.append(Duck(difficulty=chapter if chapter > 0 else 1 + round_num * 0.2))
+                    ducks_spawned += 1
+                elif not ducks and ducks_spawned >= ducks_to_hit:
+                    game_state = 'game_over'
+                    ambient_sound.stop()
+                    ambient_sound.play('sad')
+            
+            if ammo <= 0 and not ducks and ducks_spawned < ducks_to_hit:
+                game_state = 'game_over'
+                ambient_sound.stop()
+                ambient_sound.play('sad')
+        
+        elif game_state == 'round_end':
+            pass
+        
+        # Draw everything
+        screen.fill((0, 0, 0))
+        
+        if game_state == 'intro':
+            if showing_unlock_animation:
+                screen.fill((0, 0, 0))
+                unlock_animation_frame += 1
+                
+                # Efecto de desbloqueo
+                if unlock_animation_frame < 60:
+                    for i in range(20):
+                        angle = random.uniform(0, math.pi * 2)
+                        dist = random.uniform(100, 300)
+                        x = SCREEN_WIDTH // 2 + math.cos(angle) * dist
+                        y = SCREEN_HEIGHT // 2 + math.sin(angle) * dist
+                        particles.append(Particle(x, y, 'star'))
+                
+                if unlock_animation_frame < 120:
+                    for i in range(4):
+                        size = 200 - i * 30 + math.sin(unlock_animation_frame * 0.1) * 50
+                        alpha = 100 - i * 20
+                        surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+                        pygame.draw.circle(surf, (255, 200, 0, alpha), (size, size), size)
+                        screen.blit(surf, (SCREEN_WIDTH // 2 - size, SCREEN_HEIGHT // 2 - size))
+                
+                title = font_large.render("¡MODO SECRETO DESBLOQUEADO!", True, GOLD)
+                screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, SCREEN_HEIGHT // 2 - 50))
+                
+                subtitle = font_medium.render("Nuevos jefes y desafíos te esperan", True, (255, 150, 50))
+                screen.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, SCREEN_HEIGHT // 2 + 10))
+                
+                if unlock_animation_frame > 180:
+                    showing_unlock_animation = False
+                    unlock_animation_frame = 0
+                    particles = []
+            else:
+                draw_intro_screen(screen, intro_frame, menu_selection, secret_mode_unlocked)
+        
+        elif game_state == 'controls':
+            draw_controls_screen(screen, intro_frame)
+        
+        elif game_state == 'story_intro':
+            draw_story_intro(screen, chapter_frame, story_intro_stage)
+        
+        elif game_state == 'secret_intro':
+            draw_story_intro(screen, chapter_frame, secret_intro_stage)
+        
+        elif game_state == 'boss_presentation':  # <-- NUEVO ESTADO
+            draw_boss_presentation(screen, boss_intro_frame, current_boss_index, screen_shaker)
+        
+        elif game_state == 'chapter_intro':
+            draw_chapter_intro(screen, chapter_frame, chapter)
+        
+        elif game_state == 'playing':
+            # Background con efectos de shaker
+            if time_of_day == 'hell':
+                draw_hell_background(screen, game_frame, screen_shaker, intensity=1.0 + difficulty_level * 0.2)
+            else:
+                draw_background(screen, clouds, time_of_day, stars, game_frame)
+            
+            # Nubes y estrellas (ya dibujadas en draw_background para la mayoría)
+            if time_of_day == 'hell':
+                for cloud in clouds:
+                    cloud.draw(screen, time_of_day)
+            
+            # Patos
+            for duck in ducks:
+                duck.draw(screen, screen_shaker)
+            
+            # Power-ups
+            for powerup in powerups:
+                powerup.draw(screen)
+            
+            # Perro
+            dog.draw(screen)
+            
+            # Partículas
+            for particle in particles:
+                particle.draw(screen)
+            
+            # Textos flotantes
+            for text in floating_texts:
+                text.draw(screen)
+            
+            # QTE
+            qte_system.draw(screen)
+            
+            # Diálogos
+            dialogue_system.draw(screen, screen_shaker)
+            
+            # HUD
+            required_score = SECRET_MODE_REQUIREMENTS.get(round_num, 0) if secret_mode else 0
+            draw_hud(screen, score, ammo, ducks_hit, ducks_per_round, round_num, chapter, 
+                    active_powerups, combo_display, high_score, secret_mode, required_score)
+            
+            # Mira
+            draw_crosshair(screen, cursor_x, cursor_y, 
+                          active_powerups['rapid_fire'] > 0, 
+                          active_powerups['magnet'] > 0)
+        
+        elif game_state == 'round_end':
+            draw_background(screen, clouds, time_of_day, stars, game_frame)
+            
+            for duck in ducks:
+                duck.draw(screen, screen_shaker)
+            
+            for particle in particles:
+                particle.draw(screen)
+            
+            dog.draw(screen)
+            
+            # Panel de resultado
+            panel_surf = pygame.Surface((500, 250), pygame.SRCALPHA)
+            pygame.draw.rect(panel_surf, (0, 0, 0, 180), (0, 0, 500, 250), border_radius=15)
+            pygame.draw.rect(panel_surf, GOLD, (0, 0, 500, 250), 3, border_radius=15)
+            
+            title = font_large.render("¡RONDA COMPLETADA!", True, GOLD)
+            panel_surf.blit(title, (250 - title.get_width() // 2, 30))
+            
+            score_text = font_medium.render(f"Puntaje: {score:,}", True, WHITE)
+            panel_surf.blit(score_text, (250 - score_text.get_width() // 2, 90))
+            
+            if secret_mode:
+                required = SECRET_MODE_REQUIREMENTS.get(round_num, 0)
+                req_text = font_small.render(f"Requerido: {required}", True, GREEN)
+                panel_surf.blit(req_text, (250 - req_text.get_width() // 2, 130))
+                
+                next_round = min(round_num + 1, 5)
+                next_req = SECRET_MODE_REQUIREMENTS.get(next_round, 0)
+                next_text = font_small.render(f"Próxima ronda: {next_req}", True, (255, 200, 100))
+                panel_surf.blit(next_text, (250 - next_text.get_width() // 2, 160))
+            
+            continue_text = font_small.render("Presiona ESPACIO para continuar", True, (200, 200, 200))
+            panel_surf.blit(continue_text, (250 - continue_text.get_width() // 2, 200))
+            
+            screen.blit(panel_surf, (SCREEN_WIDTH // 2 - 250, SCREEN_HEIGHT // 2 - 125))
+        
+        elif game_state == 'game_over':
+            draw_background(screen, clouds, time_of_day, stars, game_frame)
+            
+            panel_surf = pygame.Surface((600, 400), pygame.SRCALPHA)
+            pygame.draw.rect(panel_surf, (0, 0, 0, 200), (0, 0, 600, 400), border_radius=20)
+            pygame.draw.rect(panel_surf, RED, (0, 0, 600, 400), 4, border_radius=20)
+            
+            title = font_large.render("¡GAME OVER!", True, RED)
+            panel_surf.blit(title, (300 - title.get_width() // 2, 40))
+            
+            reason = "Se te acabó la munición" if ammo <= 0 else "No alcanzaste el puntaje mínimo"
+            reason_text = font_medium.render(reason, True, (255, 150, 150))
+            panel_surf.blit(reason_text, (300 - reason_text.get_width() // 2, 100))
+            
+            score_text = font_medium.render(f"Puntaje final: {score:,}", True, WHITE)
+            panel_surf.blit(score_text, (300 - score_text.get_width() // 2, 160))
+            
+            if secret_mode:
+                required = SECRET_MODE_REQUIREMENTS.get(round_num, 0)
+                req_text = font_small.render(f"Requerido: {required}", True, (255, 100, 100))
+                panel_surf.blit(req_text, (300 - req_text.get_width() // 2, 210))
+            
+            high_text = font_small.render(f"Récord personal: {high_score:,}", True, GOLD)
+            panel_surf.blit(high_text, (300 - high_text.get_width() // 2, 250))
+            
+            continue_text = font_small.render("Presiona ESPACIO para volver al menú", True, (200, 200, 200))
+            panel_surf.blit(continue_text, (300 - continue_text.get_width() // 2, 320))
+            
+            screen.blit(panel_surf, (SCREEN_WIDTH // 2 - 300, SCREEN_HEIGHT // 2 - 200))
+        
+        elif game_state == 'victory':
+            draw_background(screen, clouds, time_of_day, stars, game_frame)
+            
+            # Efectos de victoria
+            if game_frame % 5 == 0:
+                for _ in range(3):
+                    particles.append(Particle(
+                        random.randint(100, SCREEN_WIDTH - 100),
+                        random.randint(100, 400),
+                        'star',
+                        random.choice([GOLD, (255, 200, 100), WHITE]),
+                        random.randint(3, 8)
+                    ))
+            
+            panel_surf = pygame.Surface((700, 500), pygame.SRCALPHA)
+            pygame.draw.rect(panel_surf, (0, 0, 0, 180), (0, 0, 700, 500), border_radius=20)
+            
+            for i in range(3):
+                border_color = (*GOLD, 100 - i * 30)
+                pygame.draw.rect(panel_surf, border_color, 
+                               (i, i, 700 - i*2, 500 - i*2), 4, border_radius=20)
+            
+            title = font_large.render("¡VICTORIA!", True, GOLD)
+            panel_surf.blit(title, (350 - title.get_width() // 2, 40))
+            
+            if secret_mode:
+                sub_title = font_medium.render("HAS DERROTADO A TODOS LOS JEFES", True, (255, 150, 50))
+                panel_surf.blit(sub_title, (350 - sub_title.get_width() // 2, 100))
+                
+                epic_text = font_small.render("Eres una leyenda en Duck Hunt", True, (200, 200, 200))
+                panel_surf.blit(epic_text, (350 - epic_text.get_width() // 2, 140))
+            else:
+                sub_title = font_medium.render("HAS COMPLETADO LA HISTORIA", True, (150, 255, 150))
+                panel_surf.blit(sub_title, (350 - sub_title.get_width() // 2, 100))
+                
+                family_text = font_small.render("La familia de Hunter está a salvo", True, (200, 200, 200))
+                panel_surf.blit(family_text, (350 - family_text.get_width() // 2, 140))
+            
+            score_text = font_medium.render(f"Puntaje final: {score:,}", True, WHITE)
+            panel_surf.blit(score_text, (350 - score_text.get_width() // 2, 200))
+            
+            high_score_text = font_small.render(f"Récord personal: {high_score:,}", True, GOLD)
+            panel_surf.blit(high_score_text, (350 - high_score_text.get_width() // 2, 250))
+            
+            if secret_mode:
+                secrets_text = font_small.render("Has desbloqueado el modo secreto definitivo", True, PURPLE)
+                panel_surf.blit(secrets_text, (350 - secrets_text.get_width() // 2, 300))
+            else:
+                hint_text = font_small.render("Intenta el código secreto WSADWSAD para más", True, (150, 150, 150))
+                panel_surf.blit(hint_text, (350 - hint_text.get_width() // 2, 300))
+            
+            continue_text = font_small.render("Presiona ESPACIO para volver al menú", True, (200, 200, 200))
+            panel_surf.blit(continue_text, (350 - continue_text.get_width() // 2, 380))
+            
+            screen.blit(panel_surf, (SCREEN_WIDTH // 2 - 350, SCREEN_HEIGHT // 2 - 250))
+        
+        # Actualizar pantalla
+        pygame.display.flip()
+        
+        # Controlar FPS
+        if game_state == 'playing' and active_powerups['slow_motion'] > 0:
+            clock.tick(FPS // 2)
+        else:
+            clock.tick(FPS)
+    
+    pygame.quit()
+
+# Ejecutar el juego
+if __name__ == "__main__":
+    main()
